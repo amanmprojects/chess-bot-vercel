@@ -1,0 +1,19 @@
+# Everything Vercel does not need. The deployed site is just chess-bot/chess/
+# (the UI + model.bin/model.json); the training pipeline, checkpoints and
+# git metadata stay out of the upload.
+
+**/.git
+**/node_modules
+**/__pycache__
+*.pyc
+
+# Training data and checkpoints (~700MB, see chess-bot/.gitignore).
+chess-bot/data/
+chess-bot/data_dev/
+chess-bot/bench/
+chess-bot/hf/
+chess-bot/.venv/
+
+# Dev scripts (not served).
+export_weights.py
+make_golden.py

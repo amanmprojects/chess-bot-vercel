@@ -1,0 +1,3 @@
+# Vercel local build/link metadata
+.vercel/
+node_modules/
