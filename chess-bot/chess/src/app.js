@@ -87,6 +87,8 @@ const state = {
   generation: 0,
   pendingRequest: null,
   evaluation: null,
+  /** Which side the stored evaluation is from (the mover at search time). */
+  evaluationSide: null,
   promotionPending: null,
   /** Neural model loading: 'idle' | 'downloading' | 'decoding' | 'ready' | 'error'. */
   modelStatus: 'idle',
@@ -173,6 +175,7 @@ function onWorkerMessage(event) {
 
   if (data.type === 'progress') {
     state.evaluation = data.score;
+    state.evaluationSide = state.game.turn;
     renderEval();
     return;
   }
@@ -195,6 +198,9 @@ function onWorkerMessage(event) {
   state.pendingRequest = null;
   setThinking(false);
   state.evaluation = data.score;
+  // The score is from the mover's point of view; remember which side that was
+  // so renderEval can convert to White's view even after the turn has flipped.
+  state.evaluationSide = state.game.turn;
 
   if (!data.uci) { render(); return; }
 
@@ -549,7 +555,11 @@ function renderEval() {
   }
 
   // The score arrives from the mover's point of view; show it from White's.
-  const white = state.game.turn === WHITE ? score.value : -score.value;
+  // `evaluationSide` is the side to move when the score was computed, which is
+  // not the same as the current turn once a move has been played — flipping on
+  // the live turn is what made the bar oscillate after every move.
+  const mover = state.evaluationSide ?? state.game.turn;
+  const white = mover === WHITE ? score.value : -score.value;
   const pawns = white / 100;
   el.evalText.textContent = `${pawns >= 0 ? '+' : ''}${pawns.toFixed(2)}`;
   // Squash to a percentage; ±5 pawns is effectively decisive.
@@ -1110,7 +1120,7 @@ function newGame() {
   state.reviewIndex = -1;
   state.resultDismissed = false;
   state.evaluation = null;
-  state.generation += 1;
+  state.evaluationSide = null;state.generation += 1;
   state.pendingRequest = null;
   setThinking(false);
   render();
@@ -1150,7 +1160,7 @@ function undo() {
   state.lastMove = state.played.at(-1) ?? null;
   state.hintMove = null;
   state.evaluation = null;
-  state.generation += 1; // invalidate any in-flight search
+  state.evaluationSide = null;state.generation += 1; // invalidate any in-flight search
   state.pendingRequest = null;
   setThinking(false);
   render();
@@ -1212,7 +1222,7 @@ function loadFen() {
     state.reviewIndex = -1;
     state.resultDismissed = false;
     state.evaluation = null;
-    state.generation += 1;
+    state.evaluationSide = null;state.generation += 1;
     state.pendingRequest = null;
     setThinking(false);
     render();
@@ -1310,7 +1320,7 @@ function setup() {
   el.side.addEventListener('change', () => {
     state.humanSide = el.side.value === 'white' ? WHITE : BLACK;
     state.evaluation = null;
-    state.generation += 1;
+    state.evaluationSide = null;state.generation += 1;
     state.pendingRequest = null;
     setThinking(false);
     render();

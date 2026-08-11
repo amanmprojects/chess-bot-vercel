@@ -2859,7 +2859,7 @@
    "fen": "rnbqkbnr/ppp1pppp/8/3p4/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
    "uci": "g8f6",
    "value": 0.134824,
-   "cp": -47,
+   "cp": 47,
    "margin": 0.172
   },
   {
@@ -2908,7 +2908,7 @@
    "fen": "r3k1r1/1ppn4/p3pqb1/3p2Bp/1b1P3P/2N1PP2/PPP5/R2QKB1R b KQq - 0 1",
    "uci": "f6f7",
    "value": 0.202514,
-   "cp": -71,
+   "cp": 71,
    "margin": 1.185
   },
   {
@@ -2929,21 +2929,21 @@
    "fen": "1r1r4/1b2k1pp/4p2q/1PN2p2/2p2P2/4QBP1/4P2P/2R1K2R b K - 0 1",
    "uci": "b7f3",
    "value": -0.874299,
-   "cp": 469,
+   "cp": -469,
    "margin": 1.934
   },
   {
    "fen": "rbbqr1k1/1p1n2p1/2p3np/5B2/pBPP4/P4N2/1PQ2PPP/R4RK1 b - - 0 1",
    "uci": "g6e7",
    "value": -0.111652,
-   "cp": 38,
+   "cp": -38,
    "margin": 0.61
   },
   {
    "fen": "7Q/p1pnb1pp/3pk3/8/5q2/8/PPP3PP/RN1K4 b - - 0 1",
    "uci": "d7e5",
    "value": 0.450606,
-   "cp": -168,
+   "cp": 168,
    "margin": 0.244
   },
   {
@@ -2964,7 +2964,7 @@
    "fen": "r1bqk1nr/pp1p1pbp/2n3p1/1Bp1p3/P3P3/N4N2/1PPP1PPP/R1BQ1RK1 b kq - 0 1",
    "uci": "g8e7",
    "value": -0.067968,
-   "cp": 23,
+   "cp": -23,
    "margin": 2.419
   },
   {
@@ -2992,7 +2992,7 @@
    "fen": "rn2kb1r/pp1qpppp/3p1n2/8/3NP3/2N5/PPP2PPP/R1BQK2R b KQkq - 0 1",
    "uci": "b8c6",
    "value": -0.210149,
-   "cp": 74,
+   "cp": -74,
    "margin": 0.567
   }
  ]

@@ -15,12 +15,12 @@
  *
  * The numerics mirror serve_model.py exactly: GELU uses the erf form, LayerNorm
  * eps 1e-5, the value head is mean-pool -> LayerNorm -> Linear -> tanh, and the
- * value is converted to centipawns from White's point of view with the same
- * logistic mapping (including the sign flip when Black is to move).
+ * value is converted to centipawns from the side to move's point of view with
+ * the same logistic mapping.
  */
 
 import {
-  Chess, WHITE, BLACK, KNIGHT, BISHOP, ROOK, QUEEN,
+  Chess, WHITE, KNIGHT, BISHOP, ROOK, QUEEN,
   fileOf, rankOf, moveFrom, moveTo, movePromo, moveToUci, from64, to64,
 } from './engine.js';
 
@@ -85,12 +85,13 @@ function policyMask(game) {
   return { mask, moves };
 }
 
-/** serve_model.py's value -> centipawns conversion (White's point of view). */
-export function valueToCp(value, turn) {
+/** Value (from the side to move's view) -> centipawns, same side to move.
+ *  Mirrors serve_model.py's logistic mapping without the White-view flip —
+ *  app.js converts to White's view itself, knowing which side the score
+ *  came from. */
+export function valueToCp(value) {
   const v = Math.max(Math.min(value, 0.999), -0.999);
-  let cp = Math.trunc(-400 * Math.log10(2 / (v + 1) - 1));
-  if (turn === BLACK) cp = -cp;
-  return cp;
+  return Math.trunc(-400 * Math.log10(2 / (v + 1) - 1));
 }
 
 /**
@@ -105,7 +106,7 @@ export function pickNeuralMove(game, model, { temperature = 0 } = {}) {
 
   // No legal moves: game over. The old serve_model.py answered with
   // uci: null and the UI treats that as "nothing to play".
-  if (moves.length === 0) return { uci: null, value, cp: valueToCp(value, game.turn) };
+  if (moves.length === 0) return { uci: null, value, cp: valueToCp(value) };
 
   let slot;
   if (temperature <= 0) {
@@ -139,7 +140,7 @@ export function pickNeuralMove(game, model, { temperature = 0 } = {}) {
 
   const move = moves.find((m) => moveToSlot(m) === slot);
   if (!move) throw new Error(`slot ${slot} not found among legal moves`);
-  return { uci: moveToUci(move), value, cp: valueToCp(value, game.turn) };
+  return { uci: moveToUci(move), value, cp: valueToCp(value) };
 }
 
 // ---------------------------------------------------------------------------

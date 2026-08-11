@@ -43,12 +43,11 @@ HAND_PICKED = [
 ]
 
 
-def value_to_cp(value, turn):
+def value_to_cp(value):
     v = max(min(float(value), 0.999), -0.999)
-    cp = int(-400 * math.log10(2 / (v + 1) - 1))
-    if not turn:  # chess.BLACK == 0; serve_model.py flips the cp for Black
-        cp = -cp
-    return cp
+    # Side-to-move view (no White-flip): the JS port and renderEval handle
+    # the conversion to White's view using the recorded mover.
+    return int(-400 * math.log10(2 / (v + 1) - 1))
 
 
 def main():
@@ -100,7 +99,7 @@ def main():
             "fen": fen,
             "uci": move.uci(),
             "value": round(float(value), 6),
-            "cp": value_to_cp(value, board.turn),
+            "cp": value_to_cp(value),
             "margin": round(float(margin), 3),
         })
 
