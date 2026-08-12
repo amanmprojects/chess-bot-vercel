@@ -262,7 +262,7 @@ select:focus, textarea:focus, .btn:focus-visible {
 
 /* ------------------------------------------------------------------ overlays */
 
-.promotion-overlay, .result-overlay {
+.promotion-overlay {
   position: absolute;
   inset: 0;
   display: flex;
@@ -279,7 +279,7 @@ select:focus, textarea:focus, .btn:focus-visible {
    so elements toggled via the hidden attribute need it restored explicitly. */
 [hidden] { display: none !important; }
 
-.promotion-dialog, .result-card {
+.promotion-dialog {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -289,7 +289,7 @@ select:focus, textarea:focus, .btn:focus-visible {
   min-width: 240px;
 }
 
-.promotion-dialog h2, .result-card h2 {
+.promotion-dialog h2 {
   margin: 0 0 12px;
   font-size: 16px;
   font-weight: 600;
@@ -322,7 +322,45 @@ select:focus, textarea:focus, .btn:focus-visible {
 
 .promo-btn svg { width: 100%; height: 100%; }
 
-.result-card p { margin: 0 0 14px; color: var(--muted); }
+.result-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+
+.result-banner .result-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.result-banner #result-title { font-size: 15px; font-weight: 600; }
+.result-banner #result-detail { color: var(--muted); font-size: 13px; }
+
+.result-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.result-close:hover, .result-close:focus-visible {
+  color: var(--text);
+  background: var(--panel-2);
+  outline: none;
+}
 
 /* ------------------------------------------------------------------ players */
 
@@ -611,7 +649,7 @@ html { -webkit-text-size-adjust: 100%; }
   .controls { gap: 10px; }
   .btn { min-height: 44px; padding: 10px 12px; }
 
-  .promotion-dialog, .result-card { min-width: 0; width: 86vw; }
+  .promotion-dialog { min-width: 0; width: 86vw; }
 
   .square, .btn, select, textarea { touch-action: manipulation; }
 }

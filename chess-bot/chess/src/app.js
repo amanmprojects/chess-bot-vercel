@@ -40,6 +40,7 @@ const el = {
   resultTitle: $('result-title'),
   resultDetail: $('result-detail'),
   resultNewGame: $('result-newgame'),
+  resultClose: $('result-close'),
   stripTop: $('strip-top'),
   stripBottom: $('strip-bottom'),
   fen: $('fen'),
@@ -83,6 +84,8 @@ const state = {
   thinking: false,
   /** -1 = live game; otherwise an index into `timeline` being reviewed. */
   reviewIndex: -1,
+  /** Set once the result banner has been dismissed, so it stays out of the way. */
+  resultDismissed: false,
   /** Bumped whenever the position changes, to discard stale worker replies. */
   generation: 0,
   pendingRequest: null,
@@ -655,6 +658,12 @@ function renderResult() {
       : `${winner === WHITE ? 'White' : 'Black'} wins`;
   }
   el.resultDetail.textContent = `${status.result} by ${status.reason}`;
+}
+
+/** Hide the result banner without starting a new game. */
+function dismissResult() {
+  state.resultDismissed = true;
+  el.result.hidden = true;
 }
 
 function setThinking(on) {
@@ -1293,6 +1302,7 @@ function setup() {
   $('btn-flip').addEventListener('click', flip);
   $('btn-hint').addEventListener('click', hint);
   el.resultNewGame.addEventListener('click', newGame);
+  el.resultClose.addEventListener('click', dismissResult);
   $('btn-load').addEventListener('click', loadFen);
   $('btn-copy').addEventListener('click', copyFen);
 

@@ -64,13 +64,17 @@
             <div class="promotion-choices" id="promotion-choices"></div>
           </div>
         </div>
-        <div class="result-overlay" id="result" hidden>
-          <div class="result-card" role="alertdialog" aria-labelledby="result-title">
-            <h2 id="result-title"></h2>
-            <p id="result-detail"></p>
-            <button class="btn btn-primary" id="result-newgame">New game</button>
-          </div>
+      </div>
+
+      <!-- Game result sits below the board as a banner, so the final position
+           stays fully visible and can be studied. -->
+      <div class="result-banner" id="result" hidden role="status" aria-live="polite">
+        <div class="result-text">
+          <strong id="result-title"></strong>
+          <span id="result-detail"></span>
         </div>
+        <button class="btn btn-primary btn-small" id="result-newgame" type="button">New game</button>
+        <button class="result-close" id="result-close" type="button" aria-label="Dismiss result">&times;</button>
       </div>
 
       <div class="player-strip" id="strip-bottom">
