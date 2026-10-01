@@ -33,25 +33,33 @@ DEFAULT_CKPT = HERE / "chess-bot" / "data" / "ckpt.pt"
 OUT_JSON = HERE / "chess-bot" / "chess" / "model.json"
 OUT_BIN = HERE / "chess-bot" / "chess" / "model.bin"
 
-# Hard defaults matching serve_model.py / train.py; the manifest records the
-# actual architecture so the JS side never assumes.
+# Fallbacks matching serve_model.py / train.py for checkpoints written before
+# arch metadata existed; the manifest records the actual architecture so the
+# JS side never assumes.
 D = 256
 N_LAYERS = 7
 N_HEADS = 8
 MLP_SCALE = 4
 
 
-def export(ckpt_path, out_json, out_bin):
+def export(ckpt_path, out_json, out_bin, info=None):
     import torch  # imported lazily: this script is a dev tool, not deployed
 
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = ckpt["model"]
 
+    # Architecture comes from the checkpoint when present (train.py and
+    # train_eval.py both record it); older checkpoints fall back to D=256/L=7.
+    d = int(ckpt.get("d", D))
+    n_layers = int(ckpt.get("n_layers", N_LAYERS))
+    n_heads = int(ckpt.get("n_heads", N_HEADS))
+    mlp_scale = int(ckpt.get("mlp_scale", MLP_SCALE))
+
     # Validate the architecture by loading into ChessNet before we trust it.
     sys.path.insert(0, str(HERE / "chess-bot"))
     from model import ChessNet
 
-    net = ChessNet(d=D, n_layers=N_LAYERS, n_heads=N_HEADS, mlp_scale=MLP_SCALE)
+    net = ChessNet(d=d, n_layers=n_layers, n_heads=n_heads, mlp_scale=mlp_scale)
     net.load_state_dict(sd)
     net.eval()
 
@@ -68,15 +76,17 @@ def export(ckpt_path, out_json, out_bin):
 
     manifest = {
         "format": 1,
-        "d": D,
-        "n_layers": N_LAYERS,
-        "n_heads": N_HEADS,
-        "mlp_scale": MLP_SCALE,
+        "d": d,
+        "n_layers": n_layers,
+        "n_heads": n_heads,
+        "mlp_scale": mlp_scale,
         "step": int(ckpt.get("step", -1)),
         "best_acc": ckpt.get("best_acc"),
+        "eval_scale": ckpt.get("eval_scale"),
         "params": sum(t["len"] for t in tensors),
         "tensors": tensors,
     }
+    manifest.update(info or {})
 
     out_json.write_text(json.dumps(manifest, indent=1) + "\n")
     out_bin.write_bytes(bytes(chunks))
@@ -92,8 +102,21 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default=str(DEFAULT_CKPT))
+    ap.add_argument("--out-json", default=str(OUT_JSON))
+    ap.add_argument("--out-bin", default=str(OUT_BIN))
+    ap.add_argument("--top1-full", type=float, default=None,
+                    help="full-split top-1, recorded for the info panel")
+    ap.add_argument("--train-records", type=int, default=None,
+                    help="training record count, recorded for the info panel")
+    ap.add_argument("--value-target", default=None,
+                    help="what the value head regresses, for the info panel")
     args = ap.parse_args()
-    export(Path(args.ckpt), OUT_JSON, OUT_BIN)
+    info = {
+        "top1_full": args.top1_full,
+        "train_records": args.train_records,
+        "value_target": args.value_target,
+    }
+    export(Path(args.ckpt), Path(args.out_json), Path(args.out_bin), info)
 
 
 if __name__ == "__main__":

@@ -86,11 +86,13 @@ function policyMask(game) {
 }
 
 /** Value (from the side to move's view) -> centipawns, same side to move.
- *  Mirrors serve_model.py's logistic mapping without the White-view flip —
- *  app.js converts to White's view itself, knowing which side the score
- *  came from. */
-export function valueToCp(value) {
+ *  Models trained on game results use serve_model.py's logistic mapping;
+ *  models trained on Stockfish evals store eval_scale in the manifest and
+ *  their tanh output already means centipawns / eval_scale. app.js converts
+ *  to White's view itself, knowing which side the score came from. */
+export function valueToCp(value, evalScale = null) {
   const v = Math.max(Math.min(value, 0.999), -0.999);
+  if (evalScale != null) return Math.trunc(v * evalScale);
   return Math.trunc(-400 * Math.log10(2 / (v + 1) - 1));
 }
 
@@ -103,10 +105,12 @@ export function pickNeuralMove(game, model, { temperature = 0 } = {}) {
   const { pieces, aux } = boardToFeatures(game);
   const { logits, value } = model.forward(pieces, aux);
   const { mask, moves } = policyMask(game);
+  const evalScale = model.manifest?.eval_scale ?? null;
+  const cp = () => valueToCp(value, evalScale);
 
   // No legal moves: game over. The old serve_model.py answered with
   // uci: null and the UI treats that as "nothing to play".
-  if (moves.length === 0) return { uci: null, value, cp: valueToCp(value) };
+  if (moves.length === 0) return { uci: null, value, cp: cp() };
 
   let slot;
   if (temperature <= 0) {
@@ -140,7 +144,7 @@ export function pickNeuralMove(game, model, { temperature = 0 } = {}) {
 
   const move = moves.find((m) => moveToSlot(m) === slot);
   if (!move) throw new Error(`slot ${slot} not found among legal moves`);
-  return { uci: moveToUci(move), value, cp: valueToCp(value) };
+  return { uci: moveToUci(move), value, cp: cp() };
 }
 
 // ---------------------------------------------------------------------------
@@ -352,43 +356,47 @@ export function createInference(manifest, bin) {
   return model;
 }
 
-let modelPromise = null;
-let manifestPromise = null;
+const modelCache = new Map();
+const manifestCache = new Map();
 
 /**
- * Fetch (once) and parse model.json. It is a few kilobytes, and it holds the
- * whole architecture, so the interface can read it without waiting on the
- * 11 MB of weights that follow.
+ * Fetch (once per file) and parse a manifest. It is a few kilobytes, and it
+ * holds the whole architecture, so the interface can read it without waiting
+ * on the megabytes of weights that follow.
  */
-export function loadManifest(base = new URL('..', import.meta.url)) {
-  if (!manifestPromise) {
-    manifestPromise = fetch(new URL('model.json', base)).then((res) => {
-      if (!res.ok) throw new Error(`model.json: HTTP ${res.status}`);
+export function loadManifest(base = new URL('..', import.meta.url), file = 'model.json') {
+  const key = new URL(file, base).href;
+  if (!manifestCache.has(key)) {
+    manifestCache.set(key, fetch(key).then((res) => {
+      if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
       return res.json();
     }).catch((err) => {
-      manifestPromise = null; // a failed load can be retried
+      manifestCache.delete(key); // a failed load can be retried
       throw err;
-    });
+    }));
   }
-  return manifestPromise;
+  return manifestCache.get(key);
 }
 
 /**
- * Fetch (once) and build the model. Resolves to the createInference result.
- * The caller decides where the files live; `base` defaults to the directory
- * of this module (so a Worker loading ./nn.js finds ../model.bin next to the
- * static site root).
+ * Fetch (once per file pair) and build the model. Resolves to the
+ * createInference result. The caller decides where the files live; `base`
+ * defaults to the directory of this module (so a Worker loading ./nn.js
+ * finds the .bin next to the static site root), and `files` selects which
+ * exported model to load.
  *
  * `onProgress` is called with {status:'downloading', loaded, total} while the
  * weights stream in and {status:'decoding'} before the fp16 decode.
  */
-export function loadModel(base = new URL('..', import.meta.url), onProgress) {
-  if (!modelPromise) {
-    modelPromise = (async () => {
-      const manifest = await loadManifest(base);
+export function loadModel(base = new URL('..', import.meta.url), onProgress,
+                           files = { manifest: 'model.json', bin: 'model.bin' }) {
+  const key = new URL(files.bin, base).href;
+  if (!modelCache.has(key)) {
+    modelCache.set(key, (async () => {
+      const manifest = await loadManifest(base, files.manifest);
 
-      const binRes = await fetch(new URL('model.bin', base));
-      if (!binRes.ok) throw new Error(`model.bin: HTTP ${binRes.status}`);
+      const binRes = await fetch(new URL(files.bin, base));
+      if (!binRes.ok) throw new Error(`${files.bin}: HTTP ${binRes.status}`);
       const total = Number(binRes.headers.get('content-length')) || 0;
 
       // Stream the weights so the UI can show real download progress.
@@ -409,16 +417,16 @@ export function loadModel(base = new URL('..', import.meta.url), onProgress) {
       onProgress?.({ status: 'decoding' });
       return createInference(manifest, bin.buffer);
     })().catch((err) => {
-      modelPromise = null; // a failed load can be retried
+      modelCache.delete(key); // a failed load can be retried
       throw err;
-    });
+    }));
   }
-  return modelPromise;
+  return modelCache.get(key);
 }
 
 /** Convience: model move for a FEN string (used by worker + main-thread fallback). */
-export async function runNeuralMove(fen) {
-  const model = await loadModel();
+export async function runNeuralMove(fen, files) {
+  const model = await loadModel(undefined, undefined, files);
   const game = new Chess(fen);
   return pickNeuralMove(game, model);
 }

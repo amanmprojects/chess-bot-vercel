@@ -18,24 +18,33 @@ import { createInference, moveToSlot, pickNeuralMove } from '../src/nn.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 
-const available = existsSync(join(root, 'model.json'))
-  && existsSync(join(root, 'model.bin'))
-  && existsSync(join(here, 'golden.json'));
+const MODEL_SETS = [
+  { manifest: 'model.json', bin: 'model.bin', golden: 'golden.json' },
+  { manifest: 'model2.json', bin: 'model2.bin', golden: 'golden2.json' },
+];
 
-let model = null;
-let golden = null;
-if (available) {
-  const manifest = JSON.parse(readFileSync(join(root, 'model.json'), 'utf8'));
-  const bin = readFileSync(join(root, 'model.bin'));
-  model = createInference(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
-  golden = JSON.parse(readFileSync(join(here, 'golden.json'), 'utf8'));
+function loadSet({ manifest, bin, golden }) {
+  if (!existsSync(join(root, manifest)) || !existsSync(join(root, bin))
+      || !existsSync(join(here, golden))) {
+    return null;
+  }
+  const m = JSON.parse(readFileSync(join(root, manifest), 'utf8'));
+  const b = readFileSync(join(root, bin));
+  return {
+    label: manifest,
+    model: createInference(m, b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)),
+    golden: JSON.parse(readFileSync(join(here, golden), 'utf8')),
+  };
 }
 
-test('move-to-slot parity with the training encoding', (t) => {
-  if (!available) return t.skip('model artifacts missing — run make_golden.py');
-  assert.ok(golden.slots.length > 0);
+const loaded = MODEL_SETS.map(loadSet);
+const anySlots = loaded.find((s) => s && s.golden.slots.length > 0);
 
-  for (const { fen, moves } of golden.slots) {
+test('move-to-slot parity with the training encoding', (t) => {
+  if (!anySlots) return t.skip('model artifacts missing — run make_golden.py');
+  assert.ok(anySlots.golden.slots.length > 0);
+
+  for (const { fen, moves } of anySlots.golden.slots) {
     const game = new Chess(fen);
     const jsMoves = game.generateMoves();
     const js = new Map(jsMoves.map((m) => [moveToUci(m), moveToSlot(m)]));
@@ -51,21 +60,24 @@ test('move-to-slot parity with the training encoding', (t) => {
   }
 });
 
-test('forward pass matches the torch checkpoint', (t) => {
-  if (!available) return t.skip('model artifacts missing — run make_golden.py');
-  assert.ok(golden.inference.length > 0);
+for (const set of loaded) {
+  test(`forward pass matches the torch checkpoint (${set?.label ?? 'missing'})`, (t) => {
+    if (!set) return t.skip('model artifacts missing — run make_golden.py');
+    const { model, golden } = set;
+    assert.ok(golden.inference.length > 0);
 
-  for (const g of golden.inference) {
-    const game = new Chess(g.fen);
-    const result = pickNeuralMove(game, model);
+    for (const g of golden.inference) {
+      const game = new Chess(g.fen);
+      const result = pickNeuralMove(game, model);
 
-    // The chosen move must agree exactly; fp16 weights and fp64 accumulation
-    // are only allowed to nudge a near-tie, which the golden set excludes.
-    assert.equal(result.uci, g.uci, `move mismatch in ${g.fen}`);
-    assert.ok(Math.abs(result.value - g.value) < 0.02,
-      `value mismatch in ${g.fen}: ${result.value} vs ${g.value}`);
-    // Centipawns are truncated, so a rounding difference of 1 is tolerable.
-    assert.ok(Math.abs(result.cp - g.cp) <= 1,
-      `cp mismatch in ${g.fen}: ${result.cp} vs ${g.cp}`);
-  }
-});
+      // The chosen move must agree exactly; fp16 weights and fp64 accumulation
+      // are only allowed to nudge a near-tie, which the golden set excludes.
+      assert.equal(result.uci, g.uci, `move mismatch in ${g.fen}`);
+      assert.ok(Math.abs(result.value - g.value) < 0.02,
+        `value mismatch in ${g.fen}: ${result.value} vs ${g.value}`);
+      // Centipawns are truncated, so a rounding difference of 1 is tolerable.
+      assert.ok(Math.abs(result.cp - g.cp) <= 1,
+        `cp mismatch in ${g.fen}: ${result.cp} vs ${g.cp}`);
+    }
+  });
+}

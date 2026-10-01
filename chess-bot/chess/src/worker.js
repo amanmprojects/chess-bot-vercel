@@ -31,10 +31,10 @@ function describeScore(score, turn) {
 }
 
 /** One forward pass of the neural net. Shaped like the worker's search reply. */
-async function handleNeural({ id, fen }) {
+async function handleNeural({ id, fen, model }) {
   try {
     const started = Date.now();
-    const result = await requestNeuralMove(fen);
+    const result = await requestNeuralMove(fen, model);
     self.postMessage({
       type: 'bestmove',
       id,
@@ -60,11 +60,11 @@ self.onmessage = (event) => {
   if (type === 'neural-preload') {
     // Fetch the neural weights in the background; progress streams back as
     // 'model-status' messages. Failures reset the cache, so a retry refetches.
-    preloadNeural(reportModelStatus);
+    preloadNeural(model, reportModelStatus);
     return;
   }
   if (type === 'neural') {
-    handleNeural({ id, fen });
+    handleNeural({ id, fen, model });
     return;
   }
   if (type !== 'search') return;

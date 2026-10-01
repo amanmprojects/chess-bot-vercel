@@ -12,9 +12,16 @@
 
 import { loadModel, runNeuralMove } from './nn.js';
 
-/** True when this level should be answered by the model instead of ai.js. */
+/** Exported checkpoints, by level id. `neural` is the original 2.6M-record
+ *  model; `neural2` the 12.5M-record Stockfish-labelled one. */
+export const NEURAL_MODELS = {
+  neural: { manifest: 'model.json', bin: 'model.bin' },
+  neural2: { manifest: 'model2.json', bin: 'model2.bin' },
+};
+
+/** True when this level should be answered by a model instead of ai.js. */
 export function isNeuralLevel(level) {
-  return level === 'neural';
+  return level in NEURAL_MODELS;
 }
 
 /**
@@ -24,8 +31,10 @@ export function isNeuralLevel(level) {
  * `onStatus` receives {status:'downloading', loaded, total},
  * {status:'decoding'}, {status:'ready'}, or {status:'error', message}.
  */
-export function preloadNeural(onStatus) {
-  loadModel(undefined, onStatus).then(
+export function preloadNeural(modelId = 'neural', onStatus) {
+  if (typeof modelId === 'function') { onStatus = modelId; modelId = 'neural'; }
+  const files = NEURAL_MODELS[modelId] ?? NEURAL_MODELS.neural;
+  loadModel(undefined, onStatus, files).then(
     () => onStatus?.({ status: 'ready' }),
     (err) => onStatus?.({ status: 'error', message: String(err?.message ?? err) })
   );
@@ -39,8 +48,9 @@ export function preloadNeural(onStatus) {
  * message envelope; a thrown error leaves the "thinking" indicator handled
  * by the caller's error path.
  */
-export async function requestNeuralMove(fen) {
+export async function requestNeuralMove(fen, modelId = 'neural') {
   const started = Date.now();
-  const result = await runNeuralMove(fen);
+  const files = NEURAL_MODELS[modelId] ?? NEURAL_MODELS.neural;
+  const result = await runNeuralMove(fen, files);
   return { ...result, ms: Date.now() - started };
 }

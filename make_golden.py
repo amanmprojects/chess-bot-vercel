@@ -43,8 +43,10 @@ HAND_PICKED = [
 ]
 
 
-def value_to_cp(value):
+def value_to_cp(value, eval_scale=None):
     v = max(min(float(value), 0.999), -0.999)
+    if eval_scale is not None:
+        return int(v * eval_scale)
     # Side-to-move view (no White-flip): the JS port and renderEval handle
     # the conversion to White's view using the recorded mover.
     return int(-400 * math.log10(2 / (v + 1) - 1))
@@ -62,9 +64,11 @@ def main():
     import torch
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    net = ChessNet().to("cpu")  # defaults: d=256, 7 layers, 8 heads, mlp_scale=4
+    net = ChessNet(d=int(ck.get("d", 256)), n_layers=int(ck.get("n_layers", 7)),
+                   n_heads=int(ck.get("n_heads", 8))).to("cpu")
     net.load_state_dict(ck["model"])
     net.eval()
+    eval_scale = ck.get("eval_scale")
 
     # A few positions from the validation set for realism.
     fens = list(HAND_PICKED)
@@ -99,7 +103,7 @@ def main():
             "fen": fen,
             "uci": move.uci(),
             "value": round(float(value), 6),
-            "cp": value_to_cp(value),
+            "cp": value_to_cp(value, eval_scale),
             "margin": round(float(margin), 3),
         })
 

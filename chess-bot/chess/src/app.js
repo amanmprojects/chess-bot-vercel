@@ -191,7 +191,7 @@ function logMoveSource(data, request) {
 
   if (isNeuralLevel(state.level) && source !== 'neural-net') {
     console.warn(
-      `[move] level is "neural" but the move came from ${source}. ` +
+      `[move] level is "${state.level}" but the move came from ${source}. ` +
       'This is a bug: the move is NOT from the neural net.'
     );
   }
@@ -333,7 +333,7 @@ function updateLoadingOverlay() {
   if (isNeuralLevel(level)) {
     const w = ensureWorker();
     if (w) {
-      w.postMessage({ type: 'neural', id, fen: payload.fen });
+      w.postMessage({ type: 'neural', id, fen: payload.fen, model: level });
       return;
     }
     // Worker-less fallback (some file:// setups): run on the main thread,
@@ -341,7 +341,7 @@ function updateLoadingOverlay() {
     setTimeout(async () => {
       try {
         const { requestNeuralMove } = await import('./neural.js');
-        const result = await requestNeuralMove(payload.fen);
+        const result = await requestNeuralMove(payload.fen, level);
         onWorkerMessage({
           data: {
             type: 'bestmove', id, source: 'neural-net',
@@ -1572,7 +1572,8 @@ function setup() {
     state.modelStatus = 'downloading';
     state.modelError = null;
     updateLoadingOverlay();
-    ensureWorker()?.postMessage({ type: 'neural-preload' });
+    ensureWorker()?.postMessage({ type: 'neural-preload',
+      ...(isNeuralLevel(state.level) ? { model: state.level } : {}) });
   });
 
   el.moves.addEventListener('click', (event) => {
@@ -1595,9 +1596,11 @@ function setup() {
   maybeStartEngineTurn();
 
   // The default engine is the neural net, so start pulling its weights in the
-  // background at once — the first computer move should not wait for an 11MB
+  // background at once — the first computer move should not wait for the
   // download. The worker reports progress via 'model-status' messages.
-  ensureWorker()?.postMessage({ type: 'neural-preload' });
+  if (isNeuralLevel(state.level)) {
+    ensureWorker()?.postMessage({ type: 'neural-preload', model: state.level });
+  }
 }
 
 setup();

@@ -116,12 +116,40 @@ function searchDescription(name) {
 }
 
 /**
- * The neural net. The architecture numbers arrive asynchronously from
- * model.json, so this renders twice: once from the known-good defaults if the
- * manifest has not loaded, and again for real once it has.
+ * The trained nets. Architecture numbers arrive asynchronously from each
+ * model's own manifest, so the panel renders twice: once from known-good
+ * defaults if the manifest has not loaded, and again for real once it has.
+ * `history` holds numbers that predate manifests and come from the training
+ * report instead — they are labelled as such, not presented as live reads.
  */
-async function neuralDescription() {
-  const m = await loadManifest().catch(() => null);
+const NEURAL_MODELS = {
+  neural: {
+    id: 'neural',
+    file: 'model.json',
+    name: 'Neural net',
+    history: {
+      trainRecords: '2,600,000 positions',
+      valueTarget: 'game result (+1 / 0 / −1)',
+      top1: 'Top-1 43.1%',
+      measured: 'On its own 13,000-position split; ≈900 Elo with no search.',
+    },
+  },
+  neural2: {
+    id: 'neural2',
+    file: 'model2.json',
+    name: 'Neural net XL',
+    history: {
+      trainRecords: '12,476,546 positions',
+      valueTarget: 'Stockfish at 2000 nodes, ±2000cp clamp',
+      top1: 'Top-1 51.1%',
+      measured: 'On a 98,294-position split; ≈1300 Elo with no search (+308 over the 5.6M net).',
+    },
+  },
+};
+
+async function neuralDescription(level = 'neural') {
+  const cfg = NEURAL_MODELS[level] ?? NEURAL_MODELS.neural;
+  const m = await loadManifest(undefined, cfg.file).catch(() => null);
 
   const params = m?.params ?? 5_577_034;
   const d = m?.d ?? 256;
@@ -145,6 +173,20 @@ async function neuralDescription() {
     });
   }
 
+  stats.push({
+    label: 'Data',
+    value: m?.train_records != null ? `${num(m.train_records)} positions` : cfg.history.trainRecords,
+    note: m?.value_target != null
+      ? `Value head regresses ${m.value_target}.`
+      : `Value head regresses ${cfg.history.valueTarget}.`,
+  });
+
+  stats.push({
+    label: 'Measured',
+    value: m?.top1_full != null ? `Top-1 ${(m.top1_full * 100).toFixed(1)}%` : cfg.history.top1,
+    note: cfg.history.measured,
+  });
+
   const sections = [
     {
       heading: 'What it sees',
@@ -156,7 +198,7 @@ async function neuralDescription() {
     {
       heading: 'What it outputs',
       body: [
-        'Two heads. The policy head is one shared matrix applied to each square, turning its 256 numbers into 73 numbers: 56 queen-style slides, 8 knight jumps, and 9 underpromotions. Across 64 squares that is 4,672 scores, one per possible move.',
+        `Two heads. The policy head is one shared matrix applied to each square, turning its ${d} numbers into 73 numbers: 56 queen-style slides, 8 knight jumps, and 9 underpromotions. Across 64 squares that is 4,672 scores, one per possible move.`,
         'The value head averages the 64 square vectors, normalises them, projects the result to a single number and squashes it into −1…+1. That is where the evaluation bar gets its number.',
       ],
     },
@@ -176,15 +218,25 @@ async function neuralDescription() {
     {
       heading: 'Where it runs',
       body: [
-        'In your browser, inside the same Web Worker the search uses, so it cannot freeze the board while it thinks. The 11 MB of weights are downloaded once and cached.',
-        'The training pipeline is not part of this app. Every architectural number above is read from the exported model.json, and the step count and accuracy are recorded there too.',
+        `In your browser, inside the same Web Worker the search uses, so it cannot freeze the board while it thinks. The ${((params * 2) / 1e6).toFixed(0)} MB of weights are downloaded once and cached.`,
+        'The training pipeline is not part of this app. Every architectural number above is read from the exported manifest, and the step count and accuracy are recorded there too.',
       ],
     },
   ];
 
+  if (level === 'neural2') {
+    sections.push({
+      heading: 'What changed in this version',
+      body: [
+        'Three things at once: 4.8× the training positions (12.5M from one month of Lichess rated games instead of 2.6M), a bigger net (9.9M parameters, width 320, 8 blocks instead of 5.6M / 256 / 7), and a value head that regresses Stockfish evaluations instead of the game result — the old head learned almost nothing beyond the position already being good or bad, which is why this one calls the winner like Stockfish does 87% of the time.',
+        'Measured on the same 98,294 held-out positions: first-guess accuracy 51.1% against 43.2%, and about 300 Elo stronger with no search on either side. It still never looks ahead, so it still walks into tactics — just fewer of them.',
+      ],
+    });
+  }
+
   return {
-    id: 'neural',
-    name: 'Neural net',
+    id: cfg.id,
+    name: cfg.name,
     kind: 'Neural network',
     tagline: `A ${layers}-block transformer that scores all 4,672 candidate moves in a single pass. It never looks ahead.`,
     stats,
@@ -199,7 +251,9 @@ async function neuralDescription() {
  * @returns {Promise<object>} content in the shape rendered by app.js
  */
 export function describeModel(level) {
-  return level === 'neural' ? neuralDescription() : Promise.resolve(searchDescription(level));
+  return level in NEURAL_MODELS
+    ? neuralDescription(level)
+    : Promise.resolve(searchDescription(level));
 }
 
 export { compact };

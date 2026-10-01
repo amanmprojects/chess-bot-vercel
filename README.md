@@ -13,10 +13,14 @@ which has no persistent Python runtime.
 Instead, the checkpoint is converted to a compact float16 blob and the
 transformer forward pass is ported to pure JavaScript:
 
-- `export_weights.py` — converts `chess-bot/data/ckpt.pt` (67MB, float32 +
-  optimizer state) into two committed files:
-  - `chess-bot/chess/model.bin` (11.2MB, raw fp16 weights)
-  - `chess-bot/chess/model.json` (manifest: config + tensor offsets)
+- `export_weights.py` — converts a checkpoint (67MB+ float32 +
+  optimizer state) into committed files per model:
+  - `chess-bot/chess/model.json` / `model.bin` (11.2MB fp16): the original
+    5.58M-param net (2.6M records, game-result value head)
+  - `chess-bot/chess/model2.json` / `model2.bin` (19.8MB fp16): the 9.92M-param
+    net (12.5M records, Stockfish-eval value head, top-1 51.1% vs 43.2%)
+  Pass `--ckpt`, `--out-json` and `--out-bin` to export a different
+  checkpoint; architecture is read from the checkpoint itself.
 - `chess-bot/chess/src/nn.js` — a dependency-free port of `model.py`: board →
   features → 7-block prenorm transformer → masked policy → best move + value.
   Numerics mirror the Python code exactly (erf GELU, LayerNorm eps 1e-5, same
@@ -53,10 +57,10 @@ Then regenerate the golden test data and run the full suite:
     python3 make_golden.py            # needs torch + python-chess + numpy
     cd chess-bot/chess && npm test    # 56 tests incl. JS-vs-torch parity
 
-`test/nn.test.mjs` replays golden.json (produced by the real torch model)
-through the JS port: every legal move's policy slot must match, and the
-chosen move/value/cp must agree. This is what guarantees the browser model
-behaves like the original.
+`test/nn.test.mjs` replays golden.json / golden2.json (produced by the real
+torch models) through the JS port: every legal move's policy slot must match,
+and the chosen move/value/cp must agree. This is what guarantees the browser
+models behave like the originals.
 
 ## Local development
 
