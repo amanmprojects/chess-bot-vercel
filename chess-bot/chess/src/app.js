@@ -13,6 +13,8 @@ import {
   FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_KCASTLE, FLAG_QCASTLE,
 } from './engine.js';
 import { isNeuralLevel, requestNeuralMove } from './neural.js';
+import { describeModel, compact } from './models.js';
+import { createFx } from './fx.js';
 import { pieceSvg, pieceName } from './pieces.js';
 
 const FILES = 'abcdefgh';
@@ -23,6 +25,19 @@ const FULL_ARMY = { [PAWN]: 8, [KNIGHT]: 2, [BISHOP]: 2, [ROOK]: 2, [QUEEN]: 1, 
 const PROMOTION_CHOICES = [QUEEN, ROOK, BISHOP, KNIGHT];
 const CAPTURED_ORDER = [QUEEN, ROOK, BISHOP, KNIGHT, PAWN];
 
+/**
+ * `Chess.status()` reports a machine reason; the interface needs a sentence.
+ * The FEN result ("1-0") is deliberately dropped — it says the same thing as
+ * the title and just adds noise ("1-0 by checkmate").
+ */
+const REASON_TEXT = {
+  checkmate: 'Checkmate',
+  stalemate: 'Stalemate — no legal move, king not in check',
+  'insufficient material': 'Neither side has enough material to mate',
+  'fifty-move rule': 'Fifty moves without a capture or a pawn move',
+  'threefold repetition': 'The position occurred three times',
+};
+
 const $ = (id) => document.getElementById(id);
 const squareIndex = (name) => squareFromAlgebraic(name);
 
@@ -32,15 +47,20 @@ const el = {
   statusDetail: $('status-detail'),
   moves: $('moves'),
   thinking: $('thinking'),
+  evalRow: $('eval-row'),
+  evalBar: document.querySelector('.eval-bar'),
   evalFill: $('eval-fill'),
   evalText: $('eval-text'),
   promotion: $('promotion'),
   promotionChoices: $('promotion-choices'),
-  result: $('result'),
-  resultTitle: $('result-title'),
-  resultDetail: $('result-detail'),
-  resultNewGame: $('result-newgame'),
-  resultClose: $('result-close'),
+  outcome: $('outcome'),
+  outcomeBadge: $('outcome-badge'),
+  outcomeTitle: $('outcome-title'),
+  outcomeDetail: $('outcome-detail'),
+  outcomeNew: $('outcome-new'),
+  fx: $('fx'),
+  boardArea: document.querySelector('.board-area'),
+  boardWrap: document.querySelector('.board-wrap'),
   stripTop: $('strip-top'),
   stripBottom: $('strip-bottom'),
   fen: $('fen'),
@@ -58,6 +78,14 @@ const el = {
   loadingBar: $('loading-bar'),
   loadingFill: $('loading-fill'),
   loadingRetry: $('loading-retry'),
+  infoBtn: $('btn-model-info'),
+  modelDialog: $('model-dialog'),
+  modelClose: $('model-close'),
+  modelKind: $('model-kind'),
+  modelTitle: $('model-dialog-title'),
+  modelTagline: $('model-tagline'),
+  modelStats: $('model-stats'),
+  modelBody: $('model-body'),
 };
 
 // ---------------------------------------------------------------------------
@@ -84,8 +112,10 @@ const state = {
   thinking: false,
   /** -1 = live game; otherwise an index into `timeline` being reviewed. */
   reviewIndex: -1,
-  /** Set once the result banner has been dismissed, so it stays out of the way. */
-  resultDismissed: false,
+  /** Whether the game was over at the last render, so effects fire once. */
+  wasOver: false,
+  /** True while the game descends from the start position (false after a FEN load). */
+  fromStart: true,
   /** Bumped whenever the position changes, to discard stale worker replies. */
   generation: 0,
   pendingRequest: null,
@@ -98,6 +128,12 @@ const state = {
   modelLoaded: 0,
   modelTotal: 0,
   modelError: null,
+  /**
+   * What the engine actually did on its most recent move, for the info panel.
+   * The configured limits are in models.js; this is the measured result, so
+   * "reached depth 11 in 4.0 s" is a fact about this machine, not a claim.
+   */
+  lastSearch: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -105,6 +141,9 @@ const state = {
 // ---------------------------------------------------------------------------
 
 let worker = null;
+
+/** Win/loss effects. Stateless apart from the confetti in flight. */
+const fx = createFx(el.fx, el.boardWrap);
 
 function ensureWorker() {
   if (worker) return worker;
@@ -197,6 +236,18 @@ function onWorkerMessage(event) {
   // mis-wired neural level would look like the net playing well rather than
   // like a bug. `source` is stamped at each dispatch site in requestSearch.
   logMoveSource(data, request);
+
+  // Kept for the info panel: what the engine actually searched, on this
+  // position, in this browser.
+  state.lastSearch = {
+    source: data.source,
+    depth: data.depth,
+    nodes: data.nodes,
+    elapsed: data.elapsed,
+  };
+  // The panel reports the last search, so it has to follow the move. Not
+  // awaited: onWorkerMessage is synchronous and must return immediately.
+  if (el.modelDialog.open) refreshModelInfo();
 
   state.pendingRequest = null;
   setThinking(false);
@@ -496,10 +547,10 @@ function renderStatus(position, reviewing) {
   const mover = position.turn === WHITE ? 'White' : 'Black';
 
   if (status.over) {
-    el.statusTurn.textContent = status.result === '1/2-1/2'
-      ? 'Draw'
-      : `${status.result === '1-0' ? 'White' : 'Black'} wins`;
-    el.statusDetail.textContent = `by ${status.reason}`;
+    // The outcome block above already says this, louder and in colour.
+    // Repeating it here read as a stutter.
+    el.statusTurn.textContent = 'Game over';
+    el.statusDetail.textContent = '';
     return;
   }
 
@@ -543,17 +594,31 @@ function renderMoveList() {
 
 function renderEval() {
   const score = state.evaluation;
-  if (!score || state.opponent === 'human') {
-    el.evalText.textContent = '—';
-    el.evalFill.style.width = '50%';
+  const over = state.reviewIndex === -1 && state.game.status().over;
+
+  // Nothing evaluates a two-player game, so the row would only ever show a
+  // dead bar. And a finished game has no evaluation to show: the last score
+  // predates the mating move, so it reads as a contradiction beside the result
+  // banner ("M5" next to "Checkmate").
+  if (state.opponent === 'human' || over) {
+    el.evalRow.hidden = true;
     return;
   }
+  el.evalRow.hidden = false;
+
+  // No score yet. The bar goes empty rather than half full: a half-filled bar
+  // reads as "level game", which is a claim nothing here supports.
+  if (!score) {
+    el.evalBar.classList.add('unknown');
+    el.evalText.textContent = '—';
+    return;
+  }
+  el.evalBar.classList.remove('unknown');
 
   if (score.type === 'mate') {
     const sign = score.winning === WHITE ? '' : '-';
     el.evalText.textContent = `M${sign}${score.moves}`;
     el.evalFill.style.width = score.winning === WHITE ? '100%' : '0%';
-    el.evalFill.style.background = score.winning === WHITE ? '#f0f0f0' : '#2c2c2c';
     return;
   }
 
@@ -568,7 +633,6 @@ function renderEval() {
   // Squash to a percentage; ±5 pawns is effectively decisive.
   const pct = 100 / (1 + Math.exp(-white / 300));
   el.evalFill.style.width = `${pct.toFixed(1)}%`;
-  el.evalFill.style.background = '#e8ecf3';
 }
 
 function renderStrips(position) {
@@ -582,7 +646,13 @@ function renderStrips(position) {
 
 /**
  * How many of each piece each side has lost, derived from the board rather
- * than from the move list so that a loaded FEN reports sensibly too.
+ * than from the move list so undo and review work for free.
+ *
+ * That only works for a game that began at the start position. A loaded FEN
+ * tells you what is on the board now, not what was taken to get there — so for
+ * those, the captured list is left empty rather than filled with every piece
+ * the side never happened to own. The material score is board-derived either
+ * way and stays correct.
  */
 function countMissing(position) {
   const present = { [WHITE]: {}, [BLACK]: {} };
@@ -596,12 +666,12 @@ function countMissing(position) {
   }
 
   const missing = { [WHITE]: {}, [BLACK]: {} };
-  let score = { [WHITE]: 0, [BLACK]: 0 };
+  const score = { [WHITE]: 0, [BLACK]: 0 };
   for (const color of [WHITE, BLACK]) {
     for (const type of CAPTURED_ORDER) {
-      const lost = Math.max(0, FULL_ARMY[type] - (present[color][type] ?? 0));
-      missing[color][type] = lost;
-      score[color] += (present[color][type] ?? 0) * DISPLAY_VALUE[type];
+      const on = present[color][type] ?? 0;
+      missing[color][type] = state.fromStart ? Math.max(0, FULL_ARMY[type] - on) : 0;
+      score[color] += on * DISPLAY_VALUE[type];
     }
   }
   return { missing, score };
@@ -640,30 +710,174 @@ function levelLabel() {
   return option ? option.textContent : state.level;
 }
 
+// ---------------------------------------------------------------------------
+// What am I playing against?
+// ---------------------------------------------------------------------------
+
+/**
+ * What the engine actually did last time, in this browser. The configured
+ * limits live in models.js; this is the measured result, which is a different
+ * and more useful claim — Expert's cap is 20 plies but it typically reaches 11.
+ */
+function lastSearchStat() {
+  const last = state.lastSearch;
+  // The neural net has no search to report, so the tile is about its last move.
+  const neural = isNeuralLevel(state.level);
+  if (!last) {
+    return {
+      label: neural ? 'Last move' : 'Last search',
+      value: '—',
+      note: 'Play a move and this fills in.',
+    };
+  }
+  const seconds = `${((last.elapsed ?? 0) / 1000).toFixed(2)} s`;
+  if (neural) {
+    return { label: 'Last move', value: seconds, note: 'One forward pass. No search.' };
+  }
+  return {
+    label: 'Last search',
+    value: `depth ${last.depth}`,
+    note: `${compact(last.nodes)} positions in ${seconds}.`,
+  };
+}
+
+function fillModelInfo(info) {
+  el.modelKind.textContent = info.kind;
+  el.modelTitle.textContent = info.name;
+  el.modelTagline.textContent = info.tagline;
+
+  const stats = [...info.stats, lastSearchStat()];
+  el.modelStats.replaceChildren(...stats.map(({ label, value, note }) => {
+    const group = document.createElement('div');
+    group.className = 'model-stat';
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    if (note) {
+      const small = document.createElement('span');
+      small.className = 'model-stat-note';
+      small.textContent = note;
+      dd.append(small);
+    }
+    group.append(dt, dd);
+    return group;
+  }));
+
+  const body = document.createDocumentFragment();
+  for (const section of info.sections) {
+    const wrap = document.createElement('section');
+    wrap.className = 'model-section';
+    const heading = document.createElement('h3');
+    heading.textContent = section.heading;
+    wrap.append(heading);
+    for (const text of section.body ?? []) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      wrap.append(p);
+    }
+    if (section.items) {
+      const list = document.createElement('ul');
+      for (const text of section.items) {
+        const li = document.createElement('li');
+        li.textContent = text;
+        list.append(li);
+      }
+      wrap.append(list);
+    }
+    body.append(wrap);
+  }
+  el.modelBody.replaceChildren(body);
+}
+
+/**
+ * Fill the dialog with the description of the current selection.
+ *
+ * The neural description is asynchronous — it reads model.json so the
+ * architecture numbers come from the model rather than being typed in — so the
+ * result is dropped if the selection changed or the dialog closed meanwhile.
+ */
+async function renderModelInfo() {
+  const wanted = state.level;
+  const info = await describeModel(wanted);
+  if (state.level !== wanted || !el.modelDialog.open) return;
+  fillModelInfo(info);
+}
+
+/** Re-render open content without waiting — used when a move lands mid-read. */
+function refreshModelInfo() {
+  const wanted = state.level;
+  describeModel(wanted).then((info) => {
+    if (state.level === wanted && el.modelDialog.open) fillModelInfo(info);
+  });
+}
+
+function openModelInfo() {
+  if (el.modelDialog.open) return;
+  el.modelDialog.showModal();
+  renderModelInfo();
+}
+
 function renderResult() {
   const status = state.reviewIndex === -1 ? state.game.status() : { over: false };
-  if (!status.over || state.resultDismissed) {
-    el.result.hidden = true;
+
+  // The effects fire on the edge into "over", not on every render — this runs
+  // on every click, and re-throwing confetti at a finished position would be
+  // both wrong and intolerable.
+  const finished = status.over && state.reviewIndex === -1;
+  if (finished && !state.wasOver) playOutcomeFx(outcomeOf(status));
+  state.wasOver = finished;
+
+  if (!finished) {
+    el.outcome.hidden = true;
+    el.boardArea.classList.remove('dimmed');
     return;
   }
 
-  el.result.hidden = false;
-  if (status.result === '1/2-1/2') {
-    el.resultTitle.textContent = 'Draw';
-  } else {
-    const winner = status.result === '1-0' ? WHITE : BLACK;
-    const youWon = state.opponent === 'ai' && winner === state.humanSide;
-    el.resultTitle.textContent = state.opponent === 'ai'
-      ? (youWon ? 'You win' : 'Computer wins')
-      : `${winner === WHITE ? 'White' : 'Black'} wins`;
-  }
-  el.resultDetail.textContent = `${status.result} by ${status.reason}`;
+  const outcome = outcomeOf(status);
+  el.outcome.hidden = false;
+  el.outcome.className = `outcome ${outcome.kind}`;
+  el.outcomeTitle.textContent = outcome.title;
+  el.outcomeBadge.textContent = outcome.badge;
+  el.outcomeDetail.textContent = REASON_TEXT[status.reason] ?? status.reason;
 }
 
-/** Hide the result banner without starting a new game. */
-function dismissResult() {
-  state.resultDismissed = true;
-  el.result.hidden = true;
+/**
+ * How the game ended, from the human's point of view.
+ *
+ * Against the computer the colours follow the player; in a two-player game
+ * they follow White, which is arbitrary but stable.
+ */
+function outcomeOf(status) {
+  if (status.result === '1/2-1/2') {
+    return { kind: 'draw', title: 'Draw', badge: '½' };
+  }
+  const winner = status.result === '1-0' ? WHITE : BLACK;
+  const youWon = state.opponent === 'ai' && winner === state.humanSide;
+  const title = state.opponent === 'ai'
+    ? (youWon ? 'You win' : 'Computer wins')
+    : `${winner === WHITE ? 'White' : 'Black'} wins`;
+  const fromHuman = state.opponent === 'ai' ? youWon : winner === WHITE;
+  return {
+    kind: fromHuman ? 'win' : 'loss',
+    title,
+    badge: winner === WHITE ? '♔' : '♚',
+  };
+}
+
+function playOutcomeFx(outcome) {
+  if (outcome.kind === 'win') {
+    fx.win();
+  } else if (outcome.kind === 'loss') {
+    fx.loss();
+    // The dim is a one-shot CSS animation; it has to be re-armed like the
+    // shake, or a second loss in the same session would show nothing.
+    el.boardArea.classList.remove('dimmed');
+    void el.boardArea.offsetWidth;
+    el.boardArea.classList.add('dimmed');
+  } else {
+    fx.clear();
+  }
 }
 
 function setThinking(on) {
@@ -789,8 +1003,8 @@ function flashDestination(sq) {
   if (!square) return;
   const animation = square.animate(
     [
-      { boxShadow: 'inset 0 0 0 3px rgba(79, 140, 255, 0.9)' },
-      { boxShadow: 'inset 0 0 0 3px rgba(79, 140, 255, 0)' },
+      { boxShadow: 'inset 0 0 0 3px rgba(111, 155, 255, 0.9)' },
+      { boxShadow: 'inset 0 0 0 3px rgba(111, 155, 255, 0)' },
     ],
     { duration: 620, easing: 'ease-out' },
   );
@@ -867,7 +1081,6 @@ function playMove(input) {
   state.candidates = [];
   state.hintMove = null;
   state.reviewIndex = -1;
-  state.resultDismissed = false;
 
   render();
   if (animate) animateMove(record, boardBefore, { flash: byOpponent });
@@ -1121,16 +1334,20 @@ function newGame() {
   finishAnimations();
   state.game = new Chess();
   state.timeline = [START_FEN];
+  state.fromStart = true;
   state.played = [];
   state.selected = -1;
   state.candidates = [];
   state.lastMove = null;
   state.hintMove = null;
   state.reviewIndex = -1;
-  state.resultDismissed = false;
   state.evaluation = null;
   state.evaluationSide = null;state.generation += 1;
   state.pendingRequest = null;
+  // Drop any confetti still falling from the game that just ended, and the
+  // loss dim, so a new game starts on a clean board.
+  fx.clear();
+  el.boardArea.classList.remove('dimmed');
   setThinking(false);
   render();
 
@@ -1142,7 +1359,6 @@ function newGame() {
 function undo() {
   if (state.thinking) return;
   finishAnimations();
-  state.resultDismissed = false;
   // Undoing while reviewing would pop the timeline underneath the review
   // index, so return to the live position first.
   exitReview();
@@ -1224,12 +1440,14 @@ function loadFen() {
     state.game = game;
     state.played = [];
     state.timeline = [game.fen()];
+    // Only the start position lets the board reveal what was captured; see
+    // countMissing. Loading the start position itself still counts.
+    state.fromStart = game.fen() === START_FEN;
     state.selected = -1;
     state.candidates = [];
     state.lastMove = null;
     state.hintMove = null;
     state.reviewIndex = -1;
-    state.resultDismissed = false;
     state.evaluation = null;
     state.evaluationSide = null;state.generation += 1;
     state.pendingRequest = null;
@@ -1301,8 +1519,7 @@ function setup() {
   $('btn-undo').addEventListener('click', undo);
   $('btn-flip').addEventListener('click', flip);
   $('btn-hint').addEventListener('click', hint);
-  el.resultNewGame.addEventListener('click', newGame);
-  el.resultClose.addEventListener('click', dismissResult);
+  el.outcomeNew.addEventListener('click', newGame);
   $('btn-load').addEventListener('click', loadFen);
   $('btn-copy').addEventListener('click', copyFen);
 
@@ -1318,6 +1535,8 @@ function setup() {
     el.levelField.hidden = isHuman;
     el.sideField.hidden = isHuman;
     el.animateField.hidden = isHuman;
+    // Nothing to describe when there is no opponent.
+    el.infoBtn.hidden = isHuman;
     updateLoadingOverlay();
     if (!isHuman) {
       state.humanSide = el.side.value === 'white' ? WHITE : BLACK;
@@ -1341,7 +1560,18 @@ function setup() {
 
   el.level.addEventListener('change', () => {
     state.level = el.level.value;
+    // The panel describes whatever is selected, so a stale one would be a lie.
+    state.lastSearch = null;
+    if (el.modelDialog.open) refreshModelInfo();
     updateLoadingOverlay();
+  });
+
+  el.infoBtn.addEventListener('click', openModelInfo);
+  el.modelClose.addEventListener('click', () => el.modelDialog.close());
+  // A click that lands on the dialog element itself is on the backdrop — the
+  // element carries no padding, so this cannot fire from inside the content.
+  el.modelDialog.addEventListener('click', (event) => {
+    if (event.target === el.modelDialog) el.modelDialog.close();
   });
 
   el.loadingRetry.addEventListener('click', () => {

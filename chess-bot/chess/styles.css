@@ -1,19 +1,34 @@
 :root {
-  --bg: #1e232b;
-  --panel: #262c37;
-  --panel-2: #2d3442;
-  --text: #e8ecf3;
-  --muted: #98a2b3;
-  --accent: #4f8cff;
-  --accent-strong: #3b74e8;
-  --danger: #e5484d;
-  --good: #46a758;
-  --dark-sq: #779556;
-  --light-sq: #ebecd0;
-  --dark-sq-move: #baca2b;
-  --light-sq-move: #f5f682;
-  --border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --bg: #131519;
+  --panel: #1b1e25;
+  --panel-2: #242832;
+  --panel-3: #2d323e;
+  --text: #e7eaf0;
+  --muted: #98a0b0;
+  /* Carries the 10px uppercase labels, so it has to clear 4.5:1 on the panel
+     rather than being dimmed for its own sake. */
+  --faint: #848c9c;
+  --accent: #6f9bff;
+  --accent-strong: #4d7ef0;
+  --danger: #f0524f;
+  --good: #4fb463;
+  --warn: #e8b04b;
+
+  /* Board. Last move reads as warm gold so it never reads as another shade of
+     green, and never collides with the blue selection ring. */
+  --sq-dark: #6f8f5e;
+  --sq-light: #ebe9d8;
+  --sq-dark-move: #a8a558;
+  --sq-light-move: #f0dd9a;
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --radius: 12px;
+
+  /* Fixed geometry the board's size calculation depends on. */
+  --strip-h: 30px;
+  --board-gap: 7px;
 }
 
 * { box-sizing: border-box; }
@@ -23,6 +38,8 @@ html, body {
   height: 100%;
 }
 
+html { -webkit-text-size-adjust: 100%; }
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
@@ -31,37 +48,46 @@ body {
   line-height: 1.45;
   display: flex;
   justify-content: center;
-  padding: 20px 16px 28px;
+  align-items: center;
+  padding: 14px 16px 16px;
+  /* The whole app fits the viewport, so the board never has to be scrolled
+     back into view to see the material advantage under it. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .app {
   width: 100%;
   max-width: 1080px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* ------------------------------------------------------------------ header */
 
 .app-header {
+  flex: 0 0 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 650;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  /* Optically centres against the taller select-and-label stack. */
+  padding-bottom: 5px;
 }
 
 .header-controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-end;
   flex-wrap: wrap;
 }
@@ -69,24 +95,26 @@ body {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .field-label {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+  letter-spacing: 0.09em;
+  color: var(--faint);
 }
 
-/* A checkbox reads as a row rather than a stacked label over a control, and
-   sits on the baseline of the neighbouring selects. */
+/* A checkbox reads as a row rather than a stacked label over a control. */
 .field-check {
+  display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 7px;
-  padding-bottom: 8px;
+  gap: 8px;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .field-check input {
@@ -95,6 +123,7 @@ body {
   height: 15px;
   margin: 0;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .field-check input:focus-visible {
@@ -106,13 +135,17 @@ select, textarea {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 14px;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 13.5px;
   font-family: inherit;
+  line-height: 1.4;
+  cursor: pointer;
 }
 
-select:focus, textarea:focus, .btn:focus-visible {
+select:hover { border-color: var(--border-strong); }
+
+select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -120,28 +153,39 @@ select:focus, textarea:focus, .btn:focus-visible {
 /* ------------------------------------------------------------------ layout */
 
 .layout {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 20px;
-  align-items: start;
-}
-
-@media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  body { padding: 12px 10px 24px; }
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 18px;
 }
 
 .board-area {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   min-width: 0;
+  min-height: 0;
+}
+
+/* This box is the size container. The board, the result banner and both player
+   strips are sized from one shared value — the smaller of this box's width and
+   the height left once the fixed rows have taken theirs — so all of them line
+   up on the same edges and the board always fits without scrolling. */
+.board-frame {
+  container-type: size;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: var(--strip-h) minmax(0, 1fr) var(--strip-h);
+  gap: var(--board-gap);
+  --board-size: min(100cqw, calc(100cqh - (2 * var(--strip-h) + 2 * var(--board-gap))));
 }
 
 .board-wrap {
   position: relative;
-  width: 100%;
+  width: var(--board-size);
   aspect-ratio: 1;
+  justify-self: center;
+  align-self: center;
 }
 
 /* ------------------------------------------------------------------ board */
@@ -152,10 +196,10 @@ select:focus, textarea:focus, .btn:focus-visible {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: var(--shadow);
-  background: var(--dark-sq);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.5);
+  background: var(--sq-dark);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -168,28 +212,47 @@ select:focus, textarea:focus, .btn:focus-visible {
   -webkit-tap-highlight-color: transparent;
 }
 
-.square.dark { background: var(--dark-sq); }
-.square.light { background: var(--light-sq); }
+/* The board is reachable by Tab and walked with the arrow keys, so the focused
+   square has to show where it is. Inset so the ring stays inside the board. */
+.square:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  z-index: 3;
+}
 
-.square.from { box-shadow: inset 0 0 0 3px var(--accent-strong); }
-.square.checked { box-shadow: inset 0 0 0 3px var(--danger); }
-.square.last-move.dark { background: var(--dark-sq-move); }
-.square.last-move.light { background: var(--light-sq-move); }
+.square.dark { background: var(--sq-dark); }
+.square.light { background: var(--sq-light); }
 
-.square.dark.selectable { background: color-mix(in srgb, var(--dark-sq) 82%, var(--accent)); }
-.square.light.selectable { background: color-mix(in srgb, var(--light-sq) 78%, var(--accent)); }
+.square.dark.last-move { background: var(--sq-dark-move); }
+.square.light.last-move { background: var(--sq-light-move); }
+
+/* Selection and check both use a ring, inset so it never disturbs the grid. */
+.square.from {
+  box-shadow: inset 0 0 0 3px var(--accent);
+  background: color-mix(in srgb, var(--sq-light) 22%, var(--accent));
+}
+.square.dark.from { background: color-mix(in srgb, var(--sq-dark) 30%, var(--accent)); }
+
+.square.checked {
+  box-shadow: inset 0 0 0 4px var(--danger);
+  background: radial-gradient(circle, color-mix(in srgb, var(--danger) 62%, transparent) 12%, transparent 78%);
+}
+
+.square.dark.selectable { background: color-mix(in srgb, var(--sq-dark) 78%, var(--accent)); }
+.square.light.selectable { background: color-mix(in srgb, var(--sq-light) 72%, var(--accent)); }
 
 .square .coord {
   position: absolute;
-  font-size: clamp(8px, 1.3vmin, 11px);
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.55);
+  font-size: clamp(9px, 1.25vmin, 12px);
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.62);
   pointer-events: none;
+  user-select: none;
 }
 
-.square .coord.file { bottom: 2px; right: 4px; }
-.square .coord.rank { top: 2px; left: 4px; }
-.square.dark .coord { color: rgba(255, 255, 255, 0.5); }
+.square .coord.file { bottom: 1px; right: 4px; }
+.square .coord.rank { top: 1px; left: 4px; }
+.square.dark .coord { color: rgba(255, 255, 255, 0.6); }
 
 /* Pieces live in a slot so the square can be re-skinned without touching them. */
 .piece-slot {
@@ -197,6 +260,9 @@ select:focus, textarea:focus, .btn:focus-visible {
   inset: 0;
   pointer-events: none;
   z-index: 1;
+  /* The 45x45 art grid leaves a little air around the piece; give it a touch
+     more presence without letting neighbouring pieces collide. */
+  padding: 1.5%;
 }
 
 /* The piece being taken, left behind to fade while its captor arrives. It sits
@@ -210,18 +276,26 @@ select:focus, textarea:focus, .btn:focus-visible {
 
 .capture-ghost svg { width: 100%; height: 100%; }
 
+/* Sized to its box wherever it appears. The absolute positioning is applied
+   only inside a square — otherwise the same class escapes to the viewport from
+   the promotion dialog and draws a piece across the whole board. */
 .piece {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
   pointer-events: none;
 }
 
-/* The piece left behind on the square while its copy follows the pointer. */
-.piece-slot.ghost {
-  opacity: 0.3;
+.piece-slot > .piece {
+  position: absolute;
+  inset: 0;
+  /* A piece sitting on the board gets a shadow rather than a flat outline, so
+     it reads as lifted off the square. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
+
+/* The piece left behind on the square while its copy follows the pointer. */
+.piece-slot.ghost { opacity: 0.3; }
 
 /* Move hints: a dot for quiet moves, a ring for captures. */
 .hint::after {
@@ -233,14 +307,23 @@ select:focus, textarea:focus, .btn:focus-visible {
   justify-content: center;
 }
 
+/* The dot needs to read on both square colours, so it is a dark core with a
+   faint light halo rather than a flat dark circle. */
 .hint.quiet::after {
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle, rgba(0,0,0,0.22) 0 18%, transparent 18%);
+  background: radial-gradient(circle,
+    rgba(0, 0, 0, 0.34) 0 16%,
+    rgba(255, 255, 255, 0.22) 16% 19%,
+    transparent 20%);
 }
 
 .hint.capture::after {
-  background: radial-gradient(circle, transparent 0 52%, rgba(0,0,0,0.22) 53% 67%, transparent 68%);
+  background: radial-gradient(circle,
+    transparent 0 49%,
+    rgba(255, 255, 255, 0.22) 50% 53%,
+    rgba(0, 0, 0, 0.34) 54% 69%,
+    transparent 70%);
 }
 
 /* The piece that is being dragged. Centred on the pointer. */
@@ -249,9 +332,10 @@ select:focus, textarea:focus, .btn:focus-visible {
   z-index: 50;
   width: var(--drag-size, 64px);
   height: var(--drag-size, 64px);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(1.06);
   pointer-events: none;
   will-change: left, top;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
 }
 
 #dragged svg { width: 100%; height: 100%; }
@@ -268,8 +352,9 @@ select:focus, textarea:focus, .btn:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(12, 15, 20, 0.55);
-  border-radius: 4px;
+  background: rgba(9, 11, 15, 0.6);
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
   /* `isolation` keeps a piece lifted mid-slide from rising above the dialog. */
   z-index: 30;
   isolation: isolate;
@@ -281,23 +366,23 @@ select:focus, textarea:focus, .btn:focus-visible {
 
 .promotion-dialog {
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 18px 20px;
   box-shadow: var(--shadow);
   text-align: center;
   min-width: 240px;
 }
 
 .promotion-dialog h2 {
-  margin: 0 0 12px;
-  font-size: 16px;
+  margin: 0 0 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .promotion-choices {
   display: grid;
-  grid-template-columns: repeat(4, 56px);
+  grid-template-columns: repeat(4, 58px);
   gap: 8px;
   justify-content: center;
 }
@@ -316,84 +401,119 @@ select:focus, textarea:focus, .btn:focus-visible {
 }
 
 .promo-btn:hover, .promo-btn:focus-visible {
-  background: var(--accent);
+  background: var(--accent-strong);
   outline: none;
 }
 
 .promo-btn svg { width: 100%; height: 100%; }
 
-.result-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  background: var(--panel);
-  border: 1px solid var(--border);
+/* ----------------------------------------------------------- win / loss fx */
+
+/* Above the app, below the dialog (which the top layer lifts above anything).
+   Never takes a click: the finished position is what you want to look at. */
+.fx-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* A loss. Deliberately not celebratory — a short shake that decays, and the
+   board edges darkening so the eye closes in on the position that beat you. */
+.board-wrap.shake { animation: board-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+@keyframes board-shake {
+  0%, 100% { transform: translateX(0); }
+  12% { transform: translateX(-7px); }
+  26% { transform: translateX(6px); }
+  40% { transform: translateX(-4px); }
+  56% { transform: translateX(3px); }
+  72% { transform: translateX(-2px); }
+  86% { transform: translateX(1px); }
+}
+
+.board-area.dimmed .board-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
   border-radius: 10px;
-  padding: 10px 12px;
-  box-shadow: var(--shadow);
+  pointer-events: none;
+  background: radial-gradient(ellipse at center,
+    transparent 34%, rgba(6, 7, 10, 0.5) 88%, rgba(6, 7, 10, 0.72) 100%);
+  animation: board-dim 1.1s ease-out forwards;
 }
 
-.result-banner .result-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
+@keyframes board-dim {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.result-banner #result-title { font-size: 15px; font-weight: 600; }
-.result-banner #result-detail { color: var(--muted); font-size: 13px; }
-
-.result-close {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 20px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.result-close:hover, .result-close:focus-visible {
-  color: var(--text);
-  background: var(--panel-2);
-  outline: none;
-}
+/* ------------------------------------------------------------------ players */
 
 /* ------------------------------------------------------------------ players */
 
 .player-strip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 26px;
-  font-size: 14px;
+  gap: 8px;
+  /* Matches the board's width so the three share one set of edges. */
+  width: var(--board-size);
+  justify-self: center;
+  height: var(--strip-h);
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--panel);
+  font-size: 13.5px;
+  min-width: 0;
+  transition: border-color 0.15s, background 0.15s;
 }
 
-.player-strip .player-name { font-weight: 600; }
-
-.player-strip.active .player-name {
-  color: var(--accent);
+.player-strip.active {
+  background: var(--panel-2);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
 }
+
+.player-strip .player-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.player-strip.active .player-name { color: var(--accent); }
+
+/* Material advantage sits right beside the name it belongs to. */
+.material {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.material:empty { display: none; }
 
 .captured {
   display: flex;
   flex-wrap: wrap;
-  gap: 1px;
-  min-height: 18px;
+  align-items: center;
+  gap: 0 1px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.captured svg { width: 18px; height: 18px; }
-.captured svg.dim { opacity: 0.45; }
-.captured svg.captured-piece { width: 16px; height: 16px; opacity: 0.55; }
-
-.material {
-  margin-left: auto;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* A captured piece is a black silhouette on a dark strip at this size, so it
+   gets a faint light halo — invisible on the white pieces, and the only thing
+   that makes the black ones readable. */
+.captured svg {
+  width: 18px;
+  height: 18px;
+  opacity: 0.62;
+  filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.35));
 }
 
 /* ------------------------------------------------------------------ panel */
@@ -401,44 +521,147 @@ select:focus, textarea:focus, .btn:focus-visible {
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  min-height: 0;
+  /* Safety valve for very short windows: the panel scrolls rather than
+     clipping its own controls. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.status { font-size: 14px; }
+/* The result lives at the top of the panel rather than under the board: the
+   finished position is worth the full height, and the outcome is read once. */
+.outcome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  /* The colour is the signal, so it is repeated as a bar and a wash rather
+     than only tinting the badge. */
+  box-shadow: inset 3px 0 0 0 var(--muted);
+  animation: outcome-in 0.22s ease-out;
+}
 
-.status-turn { font-weight: 650; }
+@keyframes outcome-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
 
-.status-detail { color: var(--muted); font-size: 13px; display: block; margin-top: 2px; }
+.outcome.win {
+  box-shadow: inset 3px 0 0 0 var(--good), inset 0 0 0 99px rgba(79, 180, 99, 0.08);
+}
+.outcome.loss {
+  box-shadow: inset 3px 0 0 0 var(--danger), inset 0 0 0 99px rgba(240, 82, 79, 0.08);
+}
+.outcome.draw {
+  box-shadow: inset 3px 0 0 0 var(--warn), inset 0 0 0 99px rgba(232, 176, 75, 0.08);
+}
 
-.eval-row {
+.outcome-badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--muted);
+}
+
+.outcome.win .outcome-badge { background: var(--good); }
+.outcome.loss .outcome-badge { background: var(--danger); }
+.outcome.draw .outcome-badge { background: var(--warn); }
+
+.outcome-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.outcome-text strong { font-size: 14.5px; font-weight: 650; }
+.outcome-text span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.outcome-text strong { font-size: 14.5px; font-weight: 650; }
+.outcome-text span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.outcome .btn { flex: 0 0 auto; align-self: center; }
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 34px;
+}
+
+.status-turn {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.005em;
+}
+
+/* An empty detail line would leave a hole under the turn, so it collapses. */
+.status-detail {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.status-detail:empty { display: none; }
+
+/* The element carries `class="eval"`; `.eval-row` never matched it, so this
+   bar had been laid out as plain blocks with the score wrapping below it. */
+.eval {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .eval-bar {
-  flex: 1;
-  height: 10px;
+  position: relative;
+  flex: 1 1 auto;
+  height: 9px;
   border-radius: 5px;
-  background: #11141a;
+  background: #0d0f13;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+/* The midpoint tick, so 50% is legible as "level" rather than as a width. */
+.eval-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .eval-fill {
   height: 100%;
   width: 50%;
-  background: var(--text);
-  transition: width 0.25s ease, background 0.25s ease;
+  background: #e7eaf0;
+  transition: width 0.25s ease;
 }
 
+/* Without an evaluation there is nothing to fill — an empty track reads as
+   "unknown", where a half-white bar reads as "level game". */
+.eval-bar.unknown .eval-fill { width: 0 !important; }
+.eval-bar.unknown::after { opacity: 0; }
+
 .eval-text {
-  min-width: 64px;
+  flex: 0 0 auto;
+  min-width: 58px;
   text-align: right;
   font-size: 12px;
   color: var(--muted);
@@ -446,62 +669,111 @@ select:focus, textarea:focus, .btn:focus-visible {
 }
 
 .moves-header {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 13px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 6px;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  border-top: 1px solid var(--border);
+  padding-top: 11px;
+  margin-top: -1px;
 }
 
 .thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
   animation: pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes pulse { 50% { opacity: 0.35; } }
+.thinking-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes pulse { 50% { opacity: 0.4; } }
 
 .moves {
+  flex: 1 1 auto;
+  min-height: 72px;
   margin: 0;
-  padding: 0;
+  padding: 2px;
   list-style: none;
-  height: 232px;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: 34px 1fr 1fr;
+  grid-template-columns: 30px 1fr 1fr;
+  align-content: start;
   align-items: baseline;
-  gap: 2px 6px;
-  font-size: 14px;
+  gap: 1px 4px;
+  font-size: 13.5px;
   font-variant-numeric: tabular-nums;
+  border-radius: 6px;
   scrollbar-width: thin;
 }
 
 .moves li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.moves li.no { color: var(--muted); font-size: 12px; text-align: right; }
-.moves li.move { padding: 1px 4px; border-radius: 4px; cursor: pointer; }
-.moves li.move:hover { background: var(--panel-2); }
-.moves li.current { background: var(--accent); color: white; }
+.moves li.no { color: var(--faint); font-size: 11.5px; text-align: right; }
+
+.moves li.move {
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.moves li.move:hover { background: var(--panel-3); }
+
+/* A soft pill rather than a solid block: the move stays legible without a
+   slab of colour competing with the board. */
+.moves li.current {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Centred rather than pinned to the top of a tall empty box. */
+.moves:empty { align-content: center; }
+
+.moves:empty::after {
+  content: "No moves yet";
+  grid-column: 1 / -1;
+  color: var(--faint);
+  font-size: 12.5px;
+  text-align: center;
+  padding: 22px 0;
+}
 
 .controls {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 7px;
 }
 
 .btn {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: 13.5px;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.12s, transform 0.05s;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s;
 }
 
-.btn:hover { background: #374052; }
+.btn:hover { background: var(--panel-3); border-color: var(--border-strong); }
 .btn:active { transform: translateY(1px); }
 
 .btn-primary {
@@ -510,41 +782,74 @@ select:focus, textarea:focus, .btn:focus-visible {
   font-weight: 600;
 }
 
-.btn-primary:hover { background: var(--accent-strong); filter: brightness(1.1); }
+.btn-primary:hover { background: #5c8bf5; border-color: transparent; }
 
-.btn-small { padding: 5px 9px; font-size: 12px; }
+.btn-small { padding: 5px 10px; font-size: 12px; }
+
+#animate-field {
+  flex: 0 0 auto;
+  margin: -4px 0 0;
+  padding: 0 2px;
+}
+
+.fen-box {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
 
 .fen-box summary {
   cursor: pointer;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
+
+.fen-box summary::-webkit-details-marker { display: none; }
+
+.fen-box summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform 0.12s;
+}
+
+.fen-box[open] summary::before { transform: rotate(90deg); }
+
+.fen-box summary:hover { color: var(--muted); }
 
 .fen-box textarea {
   width: 100%;
   margin-top: 8px;
+  padding: 7px 8px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
   resize: vertical;
+  cursor: text;
 }
 
 .fen-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   margin-top: 8px;
 }
 
-.fen-msg { font-size: 12px; color: var(--muted); }
+.fen-msg { font-size: 11.5px; color: var(--muted); min-width: 0; }
 .fen-msg.error { color: var(--danger); }
 .fen-msg.ok { color: var(--good); }
 
-@media (max-width: 860px) {
-  .moves { height: 168px; }
-}
-
-/* ------------------------------------------------------------------ loading
- * Full-screen card while the neural net's weights are downloading. */
+/* ------------------------------------------------------------------ loading */
 
 .loading-overlay {
   position: fixed;
@@ -553,14 +858,14 @@ select:focus, textarea:focus, .btn:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(12, 15, 20, 0.72);
-  backdrop-filter: blur(3px);
+  background: rgba(9, 11, 15, 0.78);
+  backdrop-filter: blur(4px);
   padding: 20px;
 }
 
 .loading-card {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
   padding: 26px 28px;
   box-shadow: var(--shadow);
@@ -583,8 +888,8 @@ select:focus, textarea:focus, .btn:focus-visible {
 }
 
 .loading-spinner {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   margin: 0 auto;
   border-radius: 50%;
   border: 3px solid var(--panel-2);
@@ -595,9 +900,9 @@ select:focus, textarea:focus, .btn:focus-visible {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .loading-bar {
-  height: 8px;
+  height: 7px;
   border-radius: 4px;
-  background: #11141a;
+  background: #0d0f13;
   overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -611,9 +916,40 @@ select:focus, textarea:focus, .btn:focus-visible {
 
 #loading-retry { margin-top: 16px; }
 
-/* ------------------------------------------------------------------ mobile */
+/* ------------------------------------------------------------------ narrow
+ * Below the two-column breakpoint the app returns to normal document flow and
+ * the page scrolls, which beats squeezing an already-small board. */
 
-html { -webkit-text-size-adjust: 100%; }
+@media (max-width: 900px) {
+  html, body { height: auto; }
+
+  body {
+    height: auto;
+    overflow: visible;
+    padding: 12px 10px 24px;
+    align-items: flex-start;
+  }
+
+  .app { height: auto; }
+
+  .layout { grid-template-columns: 1fr; gap: 12px; }
+
+  /* No viewport height to fit inside, so everything simply takes the column
+     width and the page scrolls. Without a query container, container units
+     would fall back to the viewport, so the shared size is overridden here. */
+  .board-area { display: flex; flex-direction: column; height: auto; }
+  .board-frame {
+    container-type: normal;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    --board-size: 100%;
+  }
+  .board-wrap, .player-strip { width: 100%; }
+
+  .panel { overflow: visible; }
+  .moves { flex: none; height: 190px; }
+}
 
 @media (max-width: 560px) {
   body {
@@ -623,42 +959,249 @@ html { -webkit-text-size-adjust: 100%; }
 
   .app { gap: 10px; }
 
-  .app-header { gap: 10px; }
-  .app-header h1 { font-size: 18px; }
+  /* The title takes its own row so the controls get the full width to split
+     between them, rather than sharing it with the wordmark. */
+  .app-header { flex-direction: column; align-items: stretch; gap: 9px; }
+  .app-header h1 { font-size: 17px; padding-bottom: 0; }
 
-  /* Controls become a 2x2 grid; the checkbox spans the full row. */
+  /* Controls become a 2x2 grid under the title. */
   .header-controls {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 7px;
     width: 100%;
     align-items: end;
   }
-  .header-controls .field-check {
-    grid-column: 1 / -1;
-    padding-bottom: 0;
-  }
+  #opponent { grid-column: 1 / -1; }
 
   /* 16px inputs stop iOS Safari from zooming in on focus. */
   select, textarea { font-size: 16px; width: 100%; }
 
   .panel { padding: 12px; }
-  .moves { height: 150px; font-size: 15px; }
-  .eval-text { min-width: 56px; }
+  .moves { height: 160px; font-size: 15px; }
+  .eval-text { min-width: 52px; }
 
-  .controls { gap: 10px; }
+  .controls { gap: 8px; }
   .btn { min-height: 44px; padding: 10px 12px; }
 
-  .promotion-dialog { min-width: 0; width: 86vw; }
+  .promotion-dialog { min-width: 0; width: 84vw; }
 
-  .square, .btn, select, textarea { touch-action: manipulation; }
+  .square, .btn, select, textarea, .moves li.move { touch-action: manipulation; }
 }
 
-/* Landscape phones: keep the board on screen instead of filling the width. */
+/* Landscape phones: the board is already height-bound via the size container,
+   so only the move list needs shortening. */
 @media (max-height: 520px) and (orientation: landscape) {
-  .board-wrap {
-    width: min(100%, calc(100vh - 170px));
-    align-self: center;
-  }
-  .moves { height: 120px; }
+  .moves { height: 110px; }
+}
+
+/* ------------------------------------------------------- model info dialog */
+
+/* Sits at the bottom of the controls so its text baseline matches the selects
+   rather than floating above them. The mark alone carries the meaning, and the
+   label is the tooltip, so it costs ~30px instead of ~150px. */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.info-btn:hover { background: var(--panel-3); border-color: rgba(255, 255, 255, 0.2); }
+.info-btn:active { transform: translateY(1px); }
+.info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.info-btn-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  line-height: 1;
+  color: var(--text);
+}
+
+.model-dialog {
+  /* No padding on the dialog itself, so a click on the backdrop is a click on
+     the element and can be closed on. All the padding lives inside. */
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  width: min(620px, calc(100vw - 32px));
+  /* Capped rather than sized to content: the sections run long, and an
+     uncapped dialog would push its own close button off the screen. */
+  max-height: min(86vh, 86dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.model-dialog::backdrop { background: rgba(6, 7, 10, 0.66); }
+.model-dialog[open] { animation: dialog-in 0.16s ease-out; }
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+.model-dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 12px;
+  /* Sticky against the scroll container, so the close button stays reachable
+     no matter how far down the prose the reader is. */
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.model-kind {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+
+.model-dialog-head h2 { margin: 0; font-size: 19px; font-weight: 650; }
+
+.icon-btn {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-btn svg { width: 15px; height: 15px; }
+.icon-btn:hover { background: var(--panel-3); color: var(--text); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.model-tagline {
+  margin: 0;
+  padding: 14px 18px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* The headline numbers, as tiles. Two columns because the notes under them are
+   short enough that three would truncate every value. */
+.model-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 1px;
+  margin: 14px 0 0;
+  padding: 0 18px;
+}
+
+.model-stat {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.model-stat dt {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.model-stat dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.model-stat-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.model-body { padding: 4px 18px 20px; }
+
+.model-section { margin-top: 18px; }
+
+.model-section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.model-section p {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: var(--muted);
+}
+
+/* Slightly brighter than the paragraphs: these are the things worth reading
+   rather than skimming past. */
+.model-section p:first-of-type { color: var(--text); }
+
+.model-section ul {
+  margin: 0;
+  padding-left: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.model-section li {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.model-section li::marker { color: var(--faint); }
+
+@media (max-width: 560px) {
+  .info-btn { padding: 0 10px; }
+  .model-dialog { width: calc(100vw - 20px); max-height: 88dvh; }
+  .model-stats { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+}
+
+/* Honour a reduced-motion preference for the two looping animations. */
+@media (prefers-reduced-motion: reduce) {
+  .thinking { animation: none; }
+  .loading-spinner { animation-duration: 2s; }
+  .eval-fill { transition: none; }
 }

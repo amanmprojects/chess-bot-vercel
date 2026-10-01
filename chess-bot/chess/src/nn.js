@@ -353,6 +353,25 @@ export function createInference(manifest, bin) {
 }
 
 let modelPromise = null;
+let manifestPromise = null;
+
+/**
+ * Fetch (once) and parse model.json. It is a few kilobytes, and it holds the
+ * whole architecture, so the interface can read it without waiting on the
+ * 11 MB of weights that follow.
+ */
+export function loadManifest(base = new URL('..', import.meta.url)) {
+  if (!manifestPromise) {
+    manifestPromise = fetch(new URL('model.json', base)).then((res) => {
+      if (!res.ok) throw new Error(`model.json: HTTP ${res.status}`);
+      return res.json();
+    }).catch((err) => {
+      manifestPromise = null; // a failed load can be retried
+      throw err;
+    });
+  }
+  return manifestPromise;
+}
 
 /**
  * Fetch (once) and build the model. Resolves to the createInference result.
@@ -366,9 +385,7 @@ let modelPromise = null;
 export function loadModel(base = new URL('..', import.meta.url), onProgress) {
   if (!modelPromise) {
     modelPromise = (async () => {
-      const jsonRes = await fetch(new URL('model.json', base));
-      if (!jsonRes.ok) throw new Error(`model.json: HTTP ${jsonRes.status}`);
-      const manifest = await jsonRes.json();
+      const manifest = await loadManifest(base);
 
       const binRes = await fetch(new URL('model.bin', base));
       if (!binRes.ok) throw new Error(`model.bin: HTTP ${binRes.status}`);
