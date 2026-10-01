@@ -535,52 +535,22 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
 }
 
 /* The result lives at the top of the panel rather than under the board: the
-   finished position is worth the full height, and the outcome is read once. */
+   finished position is worth the full height, and the outcome is read once.
+   Deliberately plain — a coloured bar and a coloured word. Anything more
+   elaborate competes with the board for attention the position deserves. */
 .outcome {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 10px 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
+  padding: 9px 10px;
+  border-left: 3px solid var(--muted);
+  border-radius: 4px;
   background: var(--panel-2);
-  /* The colour is the signal, so it is repeated as a bar and a wash rather
-     than only tinting the badge. */
-  box-shadow: inset 3px 0 0 0 var(--muted);
-  animation: outcome-in 0.22s ease-out;
 }
 
-@keyframes outcome-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
-}
-
-.outcome.win {
-  box-shadow: inset 3px 0 0 0 var(--good), inset 0 0 0 99px rgba(79, 180, 99, 0.08);
-}
-.outcome.loss {
-  box-shadow: inset 3px 0 0 0 var(--danger), inset 0 0 0 99px rgba(240, 82, 79, 0.08);
-}
-.outcome.draw {
-  box-shadow: inset 3px 0 0 0 var(--warn), inset 0 0 0 99px rgba(232, 176, 75, 0.08);
-}
-
-.outcome-badge {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--bg);
-  background: var(--muted);
-}
-
-.outcome.win .outcome-badge { background: var(--good); }
-.outcome.loss .outcome-badge { background: var(--danger); }
-.outcome.draw .outcome-badge { background: var(--warn); }
+.outcome.win { border-left-color: var(--good); }
+.outcome.loss { border-left-color: var(--danger); }
+.outcome.draw { border-left-color: var(--warn); }
 
 .outcome-text {
   display: flex;
@@ -590,11 +560,11 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
   flex: 1 1 auto;
 }
 
-.outcome-text strong { font-size: 14.5px; font-weight: 650; }
+.outcome-text strong { font-size: 14px; font-weight: 600; }
+.outcome.win .outcome-text strong { color: var(--good); }
+.outcome.loss .outcome-text strong { color: var(--danger); }
+.outcome.draw .outcome-text strong { color: var(--warn); }
 .outcome-text span { color: var(--muted); font-size: 12px; line-height: 1.35; }
-.outcome-text strong { font-size: 14.5px; font-weight: 650; }
-.outcome-text span { color: var(--muted); font-size: 12px; line-height: 1.35; }
-.outcome .btn { flex: 0 0 auto; align-self: center; }
 
 .status {
   display: flex;
@@ -712,17 +682,40 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
   list-style: none;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: 30px 1fr 1fr;
+  /* minmax(0, 1fr) rather than plain 1fr. A 1fr track's automatic minimum is
+     the item's min-content size, which is exactly what lets one long SAN
+     string shove its column past the track and over its neighbour. Zeroing
+     the minimum makes that impossible at any panel width. The number column
+     is in em so three-digit move numbers still fit late in a long game. */
+  grid-template-columns: 2.6em minmax(0, 1fr) minmax(0, 1fr);
   align-content: start;
   align-items: baseline;
-  gap: 1px 4px;
+  gap: 1px 8px;
   font-size: 13.5px;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   border-radius: 6px;
   scrollbar-width: thin;
+  /* Reserve the scrollbar from the start. Without this the list is full width
+     for the first few moves and jumps 10px sideways the moment it has to
+     scroll, which is the part that reads as "crammed" in a long game. */
+  scrollbar-gutter: stable;
 }
 
-.moves li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moves li {
+  min-width: 0;
+  white-space: nowrap;
+  /* clip, not hidden. `overflow: hidden` makes the cell a scroll container, and
+     a scroll container has no real text baseline — Chrome synthesises one from
+     its bottom margin edge. Grid then sizes the row to that synthesised
+     baseline, which throws away the cell's bottom padding: the row comes out
+     20px tall holding 24px of text, and every move is painted over the one
+     below it. `clip` trims the overflow without becoming a scroll container,
+     so the row keeps its real height and the ellipsis still works. */
+  overflow: clip;
+  text-overflow: ellipsis;
+}
+
 .moves li.no { color: var(--faint); font-size: 11.5px; text-align: right; }
 
 .moves li.move {
@@ -737,7 +730,7 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
 /* A soft pill rather than a solid block: the move stays legible without a
    slab of colour competing with the board. */
 .moves li.current {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: #fff;
   font-weight: 600;
 }

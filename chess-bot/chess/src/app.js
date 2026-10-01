@@ -45,6 +45,7 @@ const el = {
   board: $('board'),
   statusTurn: $('status-turn'),
   statusDetail: $('status-detail'),
+  status: $('status'),
   moves: $('moves'),
   thinking: $('thinking'),
   evalRow: $('eval-row'),
@@ -54,10 +55,8 @@ const el = {
   promotion: $('promotion'),
   promotionChoices: $('promotion-choices'),
   outcome: $('outcome'),
-  outcomeBadge: $('outcome-badge'),
   outcomeTitle: $('outcome-title'),
   outcomeDetail: $('outcome-detail'),
-  outcomeNew: $('outcome-new'),
   fx: $('fx'),
   boardArea: document.querySelector('.board-area'),
   boardWrap: document.querySelector('.board-wrap'),
@@ -537,6 +536,8 @@ function renderBoard(position, highlight, reviewing) {
 }
 
 function renderStatus(position, reviewing) {
+  el.status.hidden = false;
+
   if (reviewing) {
     el.statusTurn.textContent = `Reviewing move ${state.reviewIndex} of ${state.played.length}`;
     el.statusDetail.textContent = 'Make a move or press Live to resume play.';
@@ -547,10 +548,9 @@ function renderStatus(position, reviewing) {
   const mover = position.turn === WHITE ? 'White' : 'Black';
 
   if (status.over) {
-    // The outcome block above already says this, louder and in colour.
-    // Repeating it here read as a stutter.
-    el.statusTurn.textContent = 'Game over';
-    el.statusDetail.textContent = '';
+    // The outcome block above says this, in colour. Repeating it one line
+    // below read as a stutter, so this row steps aside instead.
+    el.status.hidden = true;
     return;
   }
 
@@ -838,7 +838,6 @@ function renderResult() {
   el.outcome.hidden = false;
   el.outcome.className = `outcome ${outcome.kind}`;
   el.outcomeTitle.textContent = outcome.title;
-  el.outcomeBadge.textContent = outcome.badge;
   el.outcomeDetail.textContent = REASON_TEXT[status.reason] ?? status.reason;
 }
 
@@ -850,7 +849,7 @@ function renderResult() {
  */
 function outcomeOf(status) {
   if (status.result === '1/2-1/2') {
-    return { kind: 'draw', title: 'Draw', badge: '½' };
+    return { kind: 'draw', title: 'Draw' };
   }
   const winner = status.result === '1-0' ? WHITE : BLACK;
   const youWon = state.opponent === 'ai' && winner === state.humanSide;
@@ -858,11 +857,7 @@ function outcomeOf(status) {
     ? (youWon ? 'You win' : 'Computer wins')
     : `${winner === WHITE ? 'White' : 'Black'} wins`;
   const fromHuman = state.opponent === 'ai' ? youWon : winner === WHITE;
-  return {
-    kind: fromHuman ? 'win' : 'loss',
-    title,
-    badge: winner === WHITE ? '♔' : '♚',
-  };
+  return { kind: fromHuman ? 'win' : 'loss', title };
 }
 
 function playOutcomeFx(outcome) {
@@ -1519,7 +1514,6 @@ function setup() {
   $('btn-undo').addEventListener('click', undo);
   $('btn-flip').addEventListener('click', flip);
   $('btn-hint').addEventListener('click', hint);
-  el.outcomeNew.addEventListener('click', newGame);
   $('btn-load').addEventListener('click', loadFen);
   $('btn-copy').addEventListener('click', copyFen);
 
