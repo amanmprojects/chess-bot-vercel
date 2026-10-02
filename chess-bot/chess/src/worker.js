@@ -12,11 +12,6 @@ import { preloadNeural, requestNeuralMove } from './neural.js';
 
 const search = new Search({ ttSizeMb: 48 });
 
-/** Report neural model download/load progress to the app for its overlay. */
-function reportModelStatus(status) {
-  self.postMessage({ type: 'model-status', ...status });
-}
-
 /** Turn a raw centipawn score into something a person can read. */
 function describeScore(score, turn) {
   if (Math.abs(score) > MATE_THRESHOLD) {
@@ -60,7 +55,11 @@ self.onmessage = (event) => {
   if (type === 'neural-preload') {
     // Fetch the neural weights in the background; progress streams back as
     // 'model-status' messages. Failures reset the cache, so a retry refetches.
-    preloadNeural(model, reportModelStatus);
+    // Each report names its model, so a load the player has switched away from
+    // cannot overwrite the status of the one they are waiting for.
+    preloadNeural(model, (status) => {
+      self.postMessage({ type: 'model-status', model, ...status });
+    });
     return;
   }
   if (type === 'neural') {

@@ -12,7 +12,7 @@ import {
   moveTo, movePromo, moveFlags,
   FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_KCASTLE, FLAG_QCASTLE,
 } from './engine.js';
-import { isNeuralLevel, requestNeuralMove } from './neural.js';
+import { isNeuralLevel, preloadNeural, requestNeuralMove } from './neural.js';
 import { describeModel, compact } from './models.js';
 import { createFx } from './fx.js';
 import { pieceSvg, pieceName } from './pieces.js';
@@ -129,6 +129,8 @@ const state = {
   modelLoaded: 0,
   modelTotal: 0,
   modelError: null,
+  /** Which level id modelStatus/modelLoaded/modelTotal describe. */
+  modelLevel: null,
   /**
    * What the engine actually did on its most recent move, for the info panel.
    * The configured limits are in models.js; this is the measured result, so
@@ -156,6 +158,11 @@ function ensureWorker() {
       // the search on the main thread rather than leaving the game unplayable.
       worker = null;
       state.workerBroken = true;
+      // A download in flight was being reported by the worker that just died,
+      // so nobody would ever say it finished. Take it over.
+      if (state.modelStatus === 'downloading' || state.modelStatus === 'decoding') {
+        preloadSelectedModel(true);
+      }
     };
   } catch {
     worker = null;
@@ -204,11 +211,7 @@ function onWorkerMessage(event) {
 
   // Model download/load status (no request id — it is global state).
   if (data.type === 'model-status') {
-    state.modelStatus = data.status;
-    state.modelLoaded = data.loaded ?? state.modelLoaded;
-    state.modelTotal = data.total ?? state.modelTotal;
-    state.modelError = data.message ?? null;
-    updateLoadingOverlay();
+    onModelStatus(data.model, data);
     return;
   }
 
@@ -1603,6 +1606,8 @@ function setup() {
     // Selecting the neural net starts its download now, so the first computer
     // move does not wait behind an 11MB fetch the player did not know about.
     preloadSelectedModel();
+    // Switching to a search level dismisses a download overlay that has nothing
+    // left to announce.
     updateLoadingOverlay();
   });
 
@@ -1615,9 +1620,8 @@ function setup() {
   });
 
   el.loadingRetry.addEventListener('click', () => {
-    state.modelStatus = 'downloading';
-    state.modelError = null;
-    updateLoadingOverlay();
+    // An errored load is not one in flight, so this starts a fresh attempt;
+    // preloadSelectedModel owns the status and the overlay from here.
     preloadSelectedModel();
   });
 
@@ -1647,20 +1651,55 @@ function setup() {
 }
 
 /**
- * Ask the worker to fetch whichever model's weights are currently selected.
+ * Ask whichever engine is selected to fetch its weights, if it needs any.
  *
- * A no-op for the search levels, which need no download. The worker's own
- * cache means repeat calls are free: a second preload resolves from the
- * already-decoded model and reports 'ready' immediately.
+ * A no-op for the search levels, which need no download. Keyed on the level id,
+ * so switching from one net to another starts the second download while
+ * re-selecting the one already in memory does not restart it.
+ *
+ * `force` restarts a load that is already under way — used when the worker
+ * carrying it has failed.
  */
-function preloadSelectedModel() {
+function preloadSelectedModel(force = false) {
   if (!isNeuralLevel(state.level)) return;
-  // Only announce a download that has not already happened. Re-selecting the
-  // same level should not reset a finished load back to 'downloading'.
-  if (state.modelStatus === 'ready') return;
+  const level = state.level;
+  if (!force && state.modelLevel === level
+      && (state.modelStatus === 'downloading'
+          || state.modelStatus === 'decoding'
+          || state.modelStatus === 'ready')) {
+    return;
+  }
+  state.modelLevel = level;
   state.modelStatus = 'downloading';
+  state.modelLoaded = 0;
+  state.modelTotal = 0;
   state.modelError = null;
-  ensureWorker()?.postMessage({ type: 'neural-preload', model: state.level });
+
+  const w = ensureWorker();
+  if (w) {
+    w.postMessage({ type: 'neural-preload', model: level });
+  } else {
+    // No worker (some file:// setups). Load on the main thread rather than
+    // leaving the overlay announcing a download that is never reported.
+    preloadNeural(level, (status) => onModelStatus(level, status));
+  }
+  updateLoadingOverlay();
+}
+
+/**
+ * Fold a load status into the state and repaint the overlay.
+ *
+ * `model` names the level the status describes: one about a model the player
+ * has since switched away from is dropped, so a slow download finishing late
+ * cannot overwrite the status of the one they are now waiting for.
+ */
+function onModelStatus(model, status) {
+  if (model && model !== state.modelLevel) return;
+  state.modelStatus = status.status;
+  state.modelLoaded = status.loaded ?? state.modelLoaded;
+  state.modelTotal = status.total ?? state.modelTotal;
+  state.modelError = status.message ?? null;
+  updateLoadingOverlay();
 }
 
 setup();
