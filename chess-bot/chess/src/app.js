@@ -895,20 +895,30 @@ function setThinking(on) {
 /**
  * Show the spinner on the strip belonging to whoever is thinking.
  *
- * Only the computer ever thinks, so exactly one strip lights up — the one whose
- * name is not the human's. On mobile the status line is below the fold, so this
- * is the only visible cue that the game has not simply stopped responding.
+ * Only the computer ever thinks, so exactly one strip lights up — whichever one
+ * carries the computer's name, not simply "the one that is not yours". Which
+ * strip that is depends on the board orientation: your side sits on the bottom
+ * only while orientation equals your colour, and flips with the board. Comparing
+ * orientations rather than hard-coding a side is what keeps the spinner on the
+ * engine's name after a flip or when you start as Black.
+ *
+ * On mobile the status line is below the fold, so this is the only visible cue
+ * that the game has not simply stopped responding.
  */
 function renderStripThinking() {
-  const computerTop = state.opponent === 'ai' && state.humanSide === BLACK;
-  const top = computerTop ? el.thinkTop : el.thinkBottom;
-  const bottom = computerTop ? el.thinkBottom : el.thinkTop;
+  // Same mapping renderStrips uses: the bottom strip shows state.orientation,
+  // so the computer is on top exactly when your colour is the bottom one.
+  const computerTop = state.humanSide === state.orientation;
+  const computerEl = computerTop ? el.thinkTop : el.thinkBottom;
+  const humanEl = computerTop ? el.thinkBottom : el.thinkTop;
   const live = state.thinking && state.opponent === 'ai';
-  top.classList.toggle('on', live);
-  bottom.classList.remove('on');
-  // The spinner replaces the need for the word, but the text is what makes it
-  // legible; the label is set once here rather than duplicated in the markup.
-  top.textContent = live ? 'thinking' : '';
+
+  for (const [strip, on] of [[computerEl, live], [humanEl, false]]) {
+    strip.classList.toggle('on', on);
+    // The spinner replaces the need for the word, but the text is what makes it
+    // legible; the label is set here rather than duplicated in the markup.
+    strip.textContent = on ? 'thinking' : '';
+  }
 }
 
 function showFenMessage(text, kind = '') {

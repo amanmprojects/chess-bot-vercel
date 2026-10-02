@@ -359,6 +359,28 @@ export function createInference(manifest, bin) {
 const modelCache = new Map();
 const manifestCache = new Map();
 
+/** fp16: every stored value is two bytes. */
+const BYTES_PER_VALUE = 2;
+
+/**
+ * Exact size in bytes of the .bin that goes with a manifest.
+ *
+ * The manifest lists each tensor's element offset and length, and the exporter
+ * writes fp16, so the file ends at 2 * max(offset + len). Derived rather than
+ * read from Content-Length because browsers drop that header from HTTP/2 and
+ * HTTP/3 responses unless the server opts in via Access-Control-Expose-Headers,
+ * which leaves the download progress bar with no denominator.
+ */
+export function weightsByteLength(manifest) {
+  if (!manifest?.tensors?.length) return 0;
+  let elements = 0;
+  for (const t of manifest.tensors) {
+    const end = t.offset + t.len;
+    if (end > elements) elements = end;
+  }
+  return elements * BYTES_PER_VALUE;
+}
+
 /**
  * Fetch (once per file) and parse a manifest. It is a few kilobytes, and it
  * holds the whole architecture, so the interface can read it without waiting
@@ -397,7 +419,11 @@ export function loadModel(base = new URL('..', import.meta.url), onProgress,
 
       const binRes = await fetch(new URL(files.bin, base));
       if (!binRes.ok) throw new Error(`${files.bin}: HTTP ${binRes.status}`);
-      const total = Number(binRes.headers.get('content-length')) || 0;
+      // The manifest already knows how big the file is, so progress has a
+      // denominator from the very first chunk.
+      const total = weightsByteLength(manifest)
+        || Number(binRes.headers.get('content-length'))
+        || 0;
 
       // Stream the weights so the UI can show real download progress.
       const reader = binRes.body.getReader();
