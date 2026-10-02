@@ -561,9 +561,9 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
     background: var(--accent);
   }
 }
-/* A captured piece is a black silhouette on a dark strip at this size, so it
-   gets a faint light halo — invisible on the white pieces, and the only thing
-   that makes the black ones readable. */
+/* The pieces are drawn in the light `tray` palette (see pieces.js) so that the
+   black ones still read against the dark strip; nothing else is needed to lift
+   them off the background. */
 .captured svg {
   /* Scales down from 18px as the strip narrows, but 12px is the floor: below
      that the silhouettes stop being countable, and a count you cannot read is
@@ -572,8 +572,7 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
   width: clamp(12px, 3.4cqw, 18px);
   height: clamp(12px, 3.4cqw, 18px);
   flex: 0 0 auto;
-  opacity: 0.62;
-  filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.35));
+  opacity: 0.82;
 }
 
 /* ------------------------------------------------------------------ panel */
