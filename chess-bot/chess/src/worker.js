@@ -56,7 +56,7 @@ async function handleNeural({ id, fen, model }) {
 }
 
 self.onmessage = (event) => {
-  const { type, id, fen, level, history } = event.data;
+  const { type, id, fen, level, history, model } = event.data;
   if (type === 'neural-preload') {
     // Fetch the neural weights in the background; progress streams back as
     // 'model-status' messages. Failures reset the cache, so a retry refetches.

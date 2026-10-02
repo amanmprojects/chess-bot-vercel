@@ -7,7 +7,7 @@
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
@@ -23,6 +23,19 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
+
+/**
+ * The model weights are immutable for a given filename and far too big to
+ * re-fetch every visit: `no-store` on an 11MB download meant a full re-download
+ * on every page load. Cache them hard, exactly as vercel.json does in
+ * production. Everything else stays uncached so editing a module and
+ * reloading shows the edit.
+ */
+function cacheControlFor(path) {
+  const name = basename(path);
+  if (/^model2?\.(bin|json)$/.test(name)) return 'public, max-age=31536000, immutable';
+  return 'no-store';
+}
 
 /**
  * Map a request path to a file inside ROOT, or null if it escapes.
@@ -64,9 +77,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, {
       'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
       'content-length': info.size,
-      // Always re-fetch: this is a development server and stale modules are
-      // far more annoying than an extra round trip on localhost.
-      'cache-control': 'no-store',
+      'cache-control': cacheControlFor(path),
     });
     res.end(req.method === 'HEAD' ? undefined : body);
   } catch {

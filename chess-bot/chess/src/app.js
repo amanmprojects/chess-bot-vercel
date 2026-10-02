@@ -270,19 +270,23 @@ function onWorkerMessage(event) {
 // ---------------------------------------------------------------------------
 
 /**
- * The neural net's weights download in the background (model.bin, ~11MB).
- * Show the loading card only while the model is actually needed — the
- * computer's turn on the neural level — so the human can keep playing while
- * it downloads. An error state offers a retry.
+ * The neural net's weights download when the level is selected (model.bin,
+ * ~11MB), not when the computer first needs them — waiting for the fetch to
+ * start meant the player made a move and then sat through an unannounced
+ * download. So the card shows for the whole download, with real byte progress,
+ * and disappears the moment the model is ready. An error state offers a retry.
  */
+/** 11154068 -> "10.6 MB". Progress that moves is the point of a progress bar. */
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} kB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
 function updateLoadingOverlay() {
-  const computerToMove = state.opponent === 'ai'
-    && state.game.turn !== state.humanSide
-    && !state.game.status().over;
   const failed = state.modelStatus === 'error';
-  const show = isNeuralLevel(state.level)
-    && state.modelStatus !== 'ready'
-    && (computerToMove || failed);
+  const show = isNeuralLevel(state.level) && state.modelStatus !== 'ready';
 
   el.loading.hidden = !show;
   if (!show) return;
@@ -303,7 +307,7 @@ function updateLoadingOverlay() {
       : null;
     el.loadingDetail.textContent = pct == null
       ? 'Downloading neural network weights…'
-      : `Downloading neural network weights… ${pct}%`;
+      : `Downloading neural network weights… ${pct}% (${formatBytes(state.modelLoaded)})`;
     el.loadingFill.style.width = `${pct ?? 0}%`;
   } else {
     el.loadingDetail.textContent =
@@ -1557,6 +1561,9 @@ function setup() {
     // The panel describes whatever is selected, so a stale one would be a lie.
     state.lastSearch = null;
     if (el.modelDialog.open) refreshModelInfo();
+    // Selecting the neural net starts its download now, so the first computer
+    // move does not wait behind an 11MB fetch the player did not know about.
+    preloadSelectedModel();
     updateLoadingOverlay();
   });
 
@@ -1572,8 +1579,7 @@ function setup() {
     state.modelStatus = 'downloading';
     state.modelError = null;
     updateLoadingOverlay();
-    ensureWorker()?.postMessage({ type: 'neural-preload',
-      ...(isNeuralLevel(state.level) ? { model: state.level } : {}) });
+    preloadSelectedModel();
   });
 
   el.moves.addEventListener('click', (event) => {
@@ -1598,9 +1604,24 @@ function setup() {
   // The default engine is the neural net, so start pulling its weights in the
   // background at once — the first computer move should not wait for the
   // download. The worker reports progress via 'model-status' messages.
-  if (isNeuralLevel(state.level)) {
-    ensureWorker()?.postMessage({ type: 'neural-preload', model: state.level });
-  }
+  preloadSelectedModel();
+}
+
+/**
+ * Ask the worker to fetch whichever model's weights are currently selected.
+ *
+ * A no-op for the search levels, which need no download. The worker's own
+ * cache means repeat calls are free: a second preload resolves from the
+ * already-decoded model and reports 'ready' immediately.
+ */
+function preloadSelectedModel() {
+  if (!isNeuralLevel(state.level)) return;
+  // Only announce a download that has not already happened. Re-selecting the
+  // same level should not reset a finished load back to 'downloading'.
+  if (state.modelStatus === 'ready') return;
+  state.modelStatus = 'downloading';
+  state.modelError = null;
+  ensureWorker()?.postMessage({ type: 'neural-preload', model: state.level });
 }
 
 setup();

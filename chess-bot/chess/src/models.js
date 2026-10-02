@@ -158,7 +158,7 @@ async function neuralDescription(level = 'neural') {
   const width = heads > 0 ? Math.round(d / heads) : 32;
 
   const stats = [
-    { label: 'Parameters', value: num(params), note: 'Float16, in model.bin.' },
+    { label: 'Parameters', value: num(params), note: `Float16, in ${cfg.bin}.` },
     { label: 'Architecture', value: `${layers} blocks`, note: `${heads} heads of ${width}, width ${d}.` },
     { label: 'Lookahead', value: '1 ply', note: 'One forward pass. No search.' },
   ];
