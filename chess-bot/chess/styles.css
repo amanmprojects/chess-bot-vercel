@@ -479,6 +479,14 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
 .player-strip .player-name {
   font-weight: 600;
   white-space: nowrap;
+  /* The engine name can be long ("Neural net XL · 9.9M, top-1 51%"). On a
+     narrow phone it must truncate rather than squeeze the captured tray off
+     the end of the strip. Shrink 4 lets it give up width; the captured tray
+     needs the space more. */
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-strip.active .player-name { color: var(--accent); }
@@ -497,21 +505,73 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
 
 .material:empty { display: none; }
 
+/* One row, always. Wrapping used to stack a second row inside a strip with a
+   fixed 30px height, so the overflow spilled 20px above and below the bar. The
+   pieces shrink to fit instead of wrapping, and the name gives up width first
+   because the pieces are the thing being tracked. */
 .captured {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0 1px;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
 }
 
+/* The computer's own strip carries the only signal that it is thinking. It is
+   here rather than in the status line because the status line is below the
+   fold on a phone, and the strip is the thing already being looked at. */
+.strip-thinking {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.strip-thinking.on { display: inline-flex; }
+
+/* A small ring rather than a dot: it reads as "working" at 10px, where a
+   pulsing dot just looks like a smudge. */
+.strip-thinking::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the "thinking" signal, drop the rotation: the label alone is enough. */
+  .strip-thinking::before {
+    animation: none;
+    border-top-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: var(--accent);
+  }
+}
 /* A captured piece is a black silhouette on a dark strip at this size, so it
    gets a faint light halo — invisible on the white pieces, and the only thing
    that makes the black ones readable. */
 .captured svg {
-  width: 18px;
-  height: 18px;
+  /* Scales down from 18px as the strip narrows, but 12px is the floor: below
+     that the silhouettes stop being countable, and a count you cannot read is
+     worse than a truncated name. The name truncates first — you already know
+     who you are playing, the tally is the thing being tracked. */
+  width: clamp(12px, 3.4cqw, 18px);
+  height: clamp(12px, 3.4cqw, 18px);
+  flex: 0 0 auto;
   opacity: 0.62;
   filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.35));
 }
@@ -922,6 +982,14 @@ select:focus, textarea:focus, .btn:focus-visible, .moves:focus-visible {
     padding: 12px 10px 24px;
     align-items: flex-start;
   }
+
+  /* Reserve the scrollbar from the start. The page is always taller than a
+     phone viewport down here — board, then the whole panel — so a classic
+     scrollbar takes 15px straight out of the layout width, and the board
+     renders 15px narrower than the screen for no visible reason. Reserving it
+     makes the board the width of the screen in both scroll states instead of
+     changing as content grows. */
+  html { scrollbar-gutter: stable; }
 
   .app { height: auto; }
 

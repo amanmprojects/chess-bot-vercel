@@ -44,6 +44,8 @@ const squareIndex = (name) => squareFromAlgebraic(name);
 const el = {
   board: $('board'),
   statusTurn: $('status-turn'),
+  thinkTop: $('think-top'),
+  thinkBottom: $('think-bottom'),
   statusDetail: $('status-detail'),
   status: $('status'),
   moves: $('moves'),
@@ -470,6 +472,9 @@ function render() {
   renderStrips(position);
   renderEval();
   renderResult();
+  // Re-evaluated on every render, not only when thinking starts: flipping the
+  // board or switching sides moves the spinner to the other strip.
+  renderStripThinking();
 
   el.fen.value = position.fen();
 }
@@ -883,7 +888,27 @@ function setThinking(on) {
   state.thinking = on;
   el.thinking.hidden = !on;
   el.board.classList.toggle('busy', on);
+  renderStripThinking();
   renderStatus(state.game, state.reviewIndex !== -1);
+}
+
+/**
+ * Show the spinner on the strip belonging to whoever is thinking.
+ *
+ * Only the computer ever thinks, so exactly one strip lights up — the one whose
+ * name is not the human's. On mobile the status line is below the fold, so this
+ * is the only visible cue that the game has not simply stopped responding.
+ */
+function renderStripThinking() {
+  const computerTop = state.opponent === 'ai' && state.humanSide === BLACK;
+  const top = computerTop ? el.thinkTop : el.thinkBottom;
+  const bottom = computerTop ? el.thinkBottom : el.thinkTop;
+  const live = state.thinking && state.opponent === 'ai';
+  top.classList.toggle('on', live);
+  bottom.classList.remove('on');
+  // The spinner replaces the need for the word, but the text is what makes it
+  // legible; the label is set once here rather than duplicated in the markup.
+  top.textContent = live ? 'thinking' : '';
 }
 
 function showFenMessage(text, kind = '') {
@@ -1561,6 +1586,10 @@ function setup() {
     // The panel describes whatever is selected, so a stale one would be a lie.
     state.lastSearch = null;
     if (el.modelDialog.open) refreshModelInfo();
+    // The strips carry the engine's name, so they have to be repainted or the
+    // board goes on naming the engine you were just playing against.
+    renderStrips(state.game);
+    renderEval();
     // Selecting the neural net starts its download now, so the first computer
     // move does not wait behind an 11MB fetch the player did not know about.
     preloadSelectedModel();
